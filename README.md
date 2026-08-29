@@ -1,11 +1,12 @@
-# `waterui-image`
+# waterui-image
 
-GPU-backed image view and shared image decode helpers for WaterUI.
+High-performance image primitives and decode pipeline for WaterUI.
 
-This crate centralizes:
+## License
 
-- the `Image` GPU view previously hosted under `waterui-media`
-- decode-route selection between platform and software paths
-- HEIF/AVIF container bridging for software decoders
+Licensed under either of
 
-`waterui-media` re-exports this crate's public image APIs.
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
