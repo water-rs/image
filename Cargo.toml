@@ -8,7 +8,7 @@ license = "Apache-2.0 OR MIT"
 readme = "README.md"
 repository = "https://github.com/water-rs/image"
 description = "Image primitives and decode pipeline for WaterUI"
-keywords = ["image", "media", "gpu", "waterui"]
+keywords = ["image", "media", "graphics", "waterui"]
 categories = ["gui", "multimedia"]
 
 [lints.rust]
@@ -28,24 +28,30 @@ cargo = { level = "warn", priority = -1 }
 undocumented_unsafe_blocks = "warn"
 multiple_crate_versions = "allow"
 
+[features]
+default = ["gpu"]
+# Rasterizing an image into a surface of its own, which is what
+# `Image::render_offscreen` does and what a `SceneView` falls back to when the
+# backend does not merge scenes itself.
+#
+# Drawing needs none of it: an image describes itself as `Scene2D` commands, so
+# a consumer whose backend owns the scene — a CPU-only renderer such as a dew
+# firmware build — turns this off and links no wgpu, no Vello and no rasterizer.
+gpu = ["waterui-graphics/gpu"]
+
 [dependencies]
 waterui-core = { version = "0.3.0", git = "https://github.com/water-rs/waterui.git", branch = "dev" }
-waterui-graphics = { version = "0.3.0", git = "https://github.com/water-rs/waterui.git", branch = "dev", features = ["gpu"] }
-shaderloom = "0.1.0"
+waterui-graphics = { version = "0.3.0", git = "https://github.com/water-rs/waterui.git", branch = "dev", default-features = false }
 waterui-layout = { version = "0.3.0", git = "https://github.com/water-rs/waterui.git", branch = "dev" }
 waterkit-codec = { version = "0.1.0", git = "https://github.com/water-rs/waterkit.git", branch = "dev", features = ["software-fallback"] }
-tracing = "0.1.44"
-wgpu = "29.0.4"
+half = { version = "2.7", default-features = false }
+kurbo = "0.13"
+peniko = "0.6"
 num-traits = { version = "0.2", default-features = false }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico", "tiff"] }
 mp4-atom = "0.14.0"
 
-[build-dependencies]
-shaderloom = { version = "0.1.0", features = ["build"] }
-
 [dev-dependencies]
 waterui = { git = "https://github.com/water-rs/waterui.git", branch = "dev" }
 waterui-testing = { git = "https://github.com/water-rs/waterui.git", branch = "dev" }
-
-[package.metadata.cargo-machete]
-ignored = ["shaderloom"]
+pollster = "1.0"
