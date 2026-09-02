@@ -6838,18 +6838,19 @@ dependencies = [
 name = "waterui-image"
 version = "0.3.0"
 dependencies = [
+ "half",
  "image",
+ "kurbo",
  "mp4-atom",
  "num-traits",
- "shaderloom",
- "tracing",
+ "peniko",
+ "pollster 1.0.1",
  "waterkit-codec 0.1.1 (git+https://github.com/water-rs/waterkit.git?branch=dev)",
  "waterui",
  "waterui-core",
  "waterui-graphics",
  "waterui-layout",
  "waterui-testing",
- "wgpu",
 ]
 
 [[package]]
