@@ -24,19 +24,19 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 use core::fmt;
-use num_traits::ToPrimitive;
 
 use half::f16;
 use peniko::color::{AlphaColor, LinearSrgb};
 use peniko::{
     Blob, ImageAlphaType, ImageBrush, ImageData, ImageFormat, ImageQuality, ImageSampler,
 };
+use waterui_core::layout::Size;
 use waterui_core::{Binding, Environment, SignalExt, View};
 use waterui_graphics::{Scene2D, SceneContent, SceneInvalidator, SceneView};
 use waterui_layout::{ContentMode, frame::Frame};
 
 use crate::codec::{self, DecodedRgba};
-use crate::scene::{self, ImageSceneContent};
+use crate::scene::{self, ImageSceneContent, pixel_size, u32_to_f32};
 
 pub use crate::codec::DecodePath;
 
@@ -516,6 +516,15 @@ impl SceneContent for ReactiveImageSceneContent {
         false
     }
 
+    /// The last published frame's pixel grid, and `None` before the first frame
+    /// arrives: until then the view has no picture, and so no size of its own.
+    fn intrinsic_size(&self) -> Option<Size> {
+        self.state
+            .dimensions
+            .get()
+            .and_then(|(width, height)| pixel_size(width, height))
+    }
+
     fn set_invalidator(&mut self, invalidator: Option<SceneInvalidator>) {
         *self.state.invalidator.borrow_mut() = invalidator;
     }
@@ -621,24 +630,28 @@ fn frame_fingerprint(decoded: &DecodedRgba) -> u64 {
         ^ (last << 24)
 }
 
-fn u32_to_f32(value: u32) -> f32 {
-    value
-        .to_f32()
-        .expect("image dimensions must be representable as f32")
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{Image, Interpolation, reactive_image, rgba16f_to_srgb8};
+    use super::{
+        Image, Interpolation, Rc, ReactiveImageSceneContent, SceneContent as _, Size,
+        reactive_image, rgba16f_to_srgb8,
+    };
     use half::f16;
     use peniko::ImageQuality;
 
     #[test]
     fn reactive_image_replaces_frame_without_replacing_view() {
         let (handle, _view) = reactive_image();
+        let content = ReactiveImageSceneContent {
+            state: Rc::clone(&handle.state),
+            content_mode: None,
+        };
+        assert_eq!(content.intrinsic_size(), None);
+
         handle.set(Image::new(alloc::vec![0, 0, 0, 255], 1, 1));
 
         assert_eq!(handle.state.dimensions.get(), Some((1, 1)));
+        assert_eq!(content.intrinsic_size(), Some(Size::new(1.0, 1.0)));
         let displayed = {
             let brush = handle.state.brush.borrow();
             let brush = brush.as_ref().expect("published frame must be on display");
@@ -649,6 +662,7 @@ mod tests {
         handle.clear();
         assert_eq!(handle.state.dimensions.get(), None);
         assert!(handle.state.brush.borrow().is_none());
+        assert_eq!(content.intrinsic_size(), None);
     }
 
     #[test]

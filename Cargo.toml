@@ -54,4 +54,7 @@ mp4-atom = "0.14.0"
 [dev-dependencies]
 waterui = { git = "https://github.com/water-rs/waterui.git", branch = "dev" }
 waterui-testing = { git = "https://github.com/water-rs/waterui.git", branch = "dev" }
+# The layout tests mount a scroll view, whose scrollbars need a widget theme the
+# default test theme does not carry.
+hydrolysis-m3 = { git = "https://github.com/water-rs/waterui.git", branch = "dev" }
 pollster = "1.0"

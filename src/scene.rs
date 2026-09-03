@@ -11,9 +11,28 @@
 //! merges them into a scene of its own.
 
 use kurbo::{Affine, Point, Rect, Shape as _, Size};
+use num_traits::ToPrimitive;
 use peniko::{Fill, ImageBrush};
+use waterui_core::layout::Size as LayoutSize;
 use waterui_graphics::{Scene2D, SceneContent, SceneInvalidator};
 use waterui_layout::ContentMode;
+
+pub fn u32_to_f32(value: u32) -> f32 {
+    value
+        .to_f32()
+        .expect("image dimensions must be representable as f32")
+}
+
+/// The size a `width` x `height` pixel grid *is*, at one pixel per unit.
+///
+/// This is what [`SceneContent::intrinsic_size`] answers for an image: layout
+/// falls back to it where nothing else settles the question, and derives an
+/// open axis from it when a container names only the other one. `None` when
+/// either axis is zero — an image with no pixels has no size, and the hook
+/// wants an honest `None` rather than a degenerate one.
+pub fn pixel_size(width: u32, height: u32) -> Option<LayoutSize> {
+    (width > 0 && height > 0).then(|| LayoutSize::new(u32_to_f32(width), u32_to_f32(height)))
+}
 
 /// Where an image's pixel grid lands inside the box the layout gave the view.
 ///
@@ -118,15 +137,20 @@ impl SceneContent for ImageSceneContent {
         false
     }
 
+    fn intrinsic_size(&self) -> Option<LayoutSize> {
+        pixel_size(self.brush.image.width, self.brush.image.height)
+    }
+
     fn set_invalidator(&mut self, _invalidator: Option<SceneInvalidator>) {}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{destination, draw, overflows};
+    use super::{ImageSceneContent, LayoutSize, destination, draw, overflows};
     use alloc::vec::Vec;
     use kurbo::{Affine, Point, Rect, Size};
     use peniko::{Blob, ImageAlphaType, ImageBrush, ImageData, ImageFormat, ImageSampler};
+    use waterui_graphics::SceneContent as _;
     use waterui_graphics::{GlyphRun, Scene2D, SceneRecording};
     use waterui_layout::ContentMode;
 
@@ -295,6 +319,30 @@ mod tests {
         draw(&mut commands, &brush(80, 20), None, 0.0, 100.0);
         draw(&mut commands, &brush(0, 0), None, 100.0, 100.0);
         assert!(commands.images.is_empty());
+    }
+
+    /// The natural size is the pixel grid at one pixel per unit, whatever the
+    /// content mode: the mode decides where the pixels land inside a box, not
+    /// how big the box wants to be.
+    #[test]
+    fn an_image_is_its_pixel_grid() {
+        for mode in [None, Some(ContentMode::Fit), Some(ContentMode::Fill)] {
+            let content = ImageSceneContent::new(brush(80, 20), mode);
+            assert_eq!(content.intrinsic_size(), Some(LayoutSize::new(80.0, 20.0)));
+        }
+    }
+
+    /// An image with no pixels has no size of its own.
+    #[test]
+    fn an_empty_image_has_no_size() {
+        assert_eq!(
+            ImageSceneContent::new(brush(0, 0), None).intrinsic_size(),
+            None
+        );
+        assert_eq!(
+            ImageSceneContent::new(brush(80, 0), None).intrinsic_size(),
+            None
+        );
     }
 
     /// The recording is what a backend replays, so the commands have to survive
