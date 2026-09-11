@@ -40,9 +40,9 @@ default = ["gpu"]
 gpu = ["waterui-graphics/gpu"]
 
 [dependencies]
-waterui-core = { version = "0.3.0", git = "https://github.com/water-rs/waterui.git", branch = "dev" }
-waterui-graphics = { version = "0.3.0", git = "https://github.com/water-rs/waterui.git", branch = "dev", default-features = false }
-waterui-layout = { version = "0.3.0", git = "https://github.com/water-rs/waterui.git", branch = "dev" }
+waterui-core = { version = "0.3.0" }
+waterui-graphics = { version = "0.4.0", default-features = false }
+waterui-layout = { version = "0.3.0" }
 waterkit-codec = { version = "0.1.0", git = "https://github.com/water-rs/waterkit.git", branch = "dev", features = ["software-fallback"] }
 half = { version = "2.7", default-features = false }
 kurbo = "0.13"
@@ -53,7 +53,7 @@ mp4-atom = "0.14.0"
 
 [dev-dependencies]
 waterui = { git = "https://github.com/water-rs/waterui.git", branch = "dev" }
-waterui-testing = { git = "https://github.com/water-rs/waterui.git", branch = "dev" }
+waterui-testing = "0.4.0"
 # The layout tests mount a scroll view, whose scrollbars need a widget theme the
 # default test theme does not carry.
 hydrolysis-m3 = { git = "https://github.com/water-rs/waterui.git", branch = "dev" }
