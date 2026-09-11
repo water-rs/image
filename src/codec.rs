@@ -27,7 +27,6 @@ pub(crate) struct DecodedRgba {
     pub(crate) height: u32,
     pub(crate) pixel_format: waterkit_codec::DecodedPixelFormat,
     pub(crate) hdr: bool,
-    pub(crate) wide_gamut: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -279,7 +278,6 @@ pub(crate) fn decode_with_software_fallback(data: &[u8]) -> Result<DecodedRgba, 
     let height = decoded.height();
     let pixel_format = decoded.pixel_format();
     let hdr = decoded.hdr();
-    let wide_gamut = decoded.wide_gamut();
     let pixels = decoded.into_pixels();
     Ok(DecodedRgba {
         pixels,
@@ -287,7 +285,6 @@ pub(crate) fn decode_with_software_fallback(data: &[u8]) -> Result<DecodedRgba, 
         height,
         pixel_format,
         hdr,
-        wide_gamut,
     })
 }
 
@@ -297,7 +294,6 @@ pub(crate) fn decode_with_platform(data: &[u8]) -> Result<DecodedRgba, String> {
     let height = decoded.height();
     let pixel_format = decoded.pixel_format();
     let hdr = decoded.hdr();
-    let wide_gamut = decoded.wide_gamut();
     let pixels = decoded.into_pixels();
     Ok(DecodedRgba {
         pixels,
@@ -305,7 +301,6 @@ pub(crate) fn decode_with_platform(data: &[u8]) -> Result<DecodedRgba, String> {
         height,
         pixel_format,
         hdr,
-        wide_gamut,
     })
 }
 
