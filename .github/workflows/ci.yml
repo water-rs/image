@@ -36,7 +36,12 @@ jobs:
         uses: tracel-ai/github-actions/install-dxc@295f2fdbae5271f4f8ad56d634e4ff6a95daafc8
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
-      - run: cargo nextest run --workspace --all-targets --all-features
+      # `*-example` carries no tests, and its `dev` feature turns on
+      # `waterui/dynamic_linking`: that pulls in `waterui-dylib`, whose
+      # ~77k-symbol DLL overflows the PE export-table limit of 65535 and the
+      # Windows link dies with LNK1189. Check-mode jobs still compile it under
+      # every feature.
+      - run: cargo nextest run --workspace --all-targets --all-features --exclude '*-example'
 
   lint:
     name: Lint
