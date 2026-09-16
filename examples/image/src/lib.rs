@@ -8,12 +8,12 @@
 //! - Custom URL loading with TextField and Button
 
 use waterui::app::App;
-use waterui::media::photo::Event as PhotoEvent;
 use waterui::media::Photo;
-use waterui_image::Image;
+use waterui::media::photo::Event as PhotoEvent;
 use waterui::prelude::slider::slider;
 use waterui::prelude::*;
 use waterui::preview;
+use waterui_image::Image;
 
 // Note: filtrate is re-exported through waterui::media as Filter
 
