@@ -4,6 +4,12 @@ All notable changes to `waterui-image` are documented in this file.
 
 ## [Unreleased]
 
+## [0.5.1](https://github.com/water-rs/image/compare/v0.5.0...v0.5.1) - 2026-09-20
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.4.0](https://github.com/water-rs/image/compare/v0.3.0...v0.4.0) - 2026-09-11
 
 ### Added
