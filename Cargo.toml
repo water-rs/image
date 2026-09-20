@@ -56,11 +56,11 @@ image = { version = "0.25.10", default-features = false, features = ["png", "jpe
 mp4-atom = "0.14.0"
 
 [dev-dependencies]
-waterui = "0.5.0"
-waterui-testing = "0.5.0"
+waterui = { git = "https://github.com/water-rs/waterui", rev = "b25438ae309d69c8a91c6ecc2580723ed1dd792b" }
+waterui-testing = { git = "https://github.com/water-rs/waterui", rev = "b25438ae309d69c8a91c6ecc2580723ed1dd792b" }
 # The layout tests mount a scroll view, whose scrollbars need a widget theme the
 # default test theme does not carry.
-hydrolysis-m3 = "0.3.0"
+hydrolysis-m3 = { git = "https://github.com/water-rs/hydrolysis-m3", rev = "38499ef90b0a9e0d3b413fa78350325e88e21044" }
 pollster = "1.0"
 
 # The 0.5.0 framework release is in flight from b25438ae on `water-rs/waterui`
