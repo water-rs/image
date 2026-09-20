@@ -35,7 +35,18 @@ jobs:
         if: runner.os == 'Windows'
         uses: tracel-ai/github-actions/install-dxc@295f2fdbae5271f4f8ad56d634e4ff6a95daafc8
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace --all-targets --all-features
+      - uses: taiki-e/install-action@nextest
+      # `*-example` stays out of the `--all-features` pass: its `dev` feature
+      # turns on `waterui/dynamic_linking`, which pulls in `waterui-dylib` —
+      # a ~77k-symbol DLL that overflows the PE export-table limit of 65535,
+      # so the Windows link dies with LNK1189 and that link cannot exist
+      # there. Coverage is kept: the second run builds and links every test
+      # target the example has on all three OSes with `dev` (its only
+      # feature) off, so only the `waterui-dylib` link is left out. The
+      # example carries no test functions today, hence `--no-tests warn`
+      # instead of the default fail.
+      - run: cargo nextest run --workspace --all-targets --all-features --exclude '*-example'
+      - run: cargo nextest run -p image-example --all-targets --no-tests warn
 
   lint:
     name: Lint
