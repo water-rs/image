@@ -70,7 +70,7 @@ pollster = "1.0"
 # the pins drop once 0.5.0 lands on the registry.
 [patch.crates-io]
 waterui-image = { path = "." }
-waterui-svg = { git = "https://github.com/water-rs/svg", rev = "79493d096341faf630e03350f22db73c07bb3b3a" }
+waterui-svg = { git = "https://github.com/water-rs/svg", rev = "12553db2de92e66ff919f56c6dd98ba42f757a00" }
 waterui = { git = "https://github.com/water-rs/waterui", rev = "d6807a87c39b2b3f6e992cd9f205f93a2155ed8b" }
 waterui-assets = { git = "https://github.com/water-rs/waterui", rev = "d6807a87c39b2b3f6e992cd9f205f93a2155ed8b" }
 waterui-assets-core = { git = "https://github.com/water-rs/waterui", rev = "d6807a87c39b2b3f6e992cd9f205f93a2155ed8b" }
@@ -102,8 +102,8 @@ waterui-webview = { git = "https://github.com/water-rs/waterui", rev = "d6807a87
 # The renderer and theme the test graph mounts are their own repositories
 # since the extraction; pin the dev heads that carry the proposal-aware
 # contract this revision requires.
-hydrolysis = { git = "https://github.com/water-rs/hydrolysis", rev = "603a8b56722c22e434f6036b4443ff0b12365bce" }
-hydrolysis-m3 = { git = "https://github.com/water-rs/hydrolysis-m3", rev = "6a9981926ba3af16bed33b179365ff2d8a85ed05" }
+hydrolysis = { git = "https://github.com/water-rs/hydrolysis", rev = "71f18452543ea6501de73f003dafb6235f4ba3a7" }
+hydrolysis-m3 = { git = "https://github.com/water-rs/hydrolysis-m3", rev = "38499ef90b0a9e0d3b413fa78350325e88e21044" }
 # The third-party pins below are the framework's own: the pinned
 # `waterui-graphics` was built with these forks, and dropping them here would
 # render this crate's tests through different code than the framework runs.
