@@ -47,7 +47,7 @@ gpu = ["waterui-graphics/gpu"]
 waterui-core = { version = "0.5.0" }
 waterui-graphics = { version = "0.5.0", default-features = false }
 waterui-layout = { version = "0.5.0" }
-waterkit-codec = { version = "0.1.2", features = ["software-fallback"] }
+waterkit-codec = { version = "0.1.2", default-features = false, features = ["software-fallback"] }
 half = { version = "2.7", default-features = false }
 kurbo = "0.13"
 peniko = "0.6"
@@ -68,6 +68,10 @@ pollster = "1.0"
 # resolves the same sources as water-rs/waterui `dev`.
 [patch.crates-io]
 waterui-image = { path = "." }
+# Pinned to the waterkit head that gates the Linux VA-API stack behind a
+# `vaapi` feature: a still-image decoder must not link `cros-libva` (see
+# water-rs/waterui#1190). Drop this pin once the codec release carries it.
+waterkit-codec = { git = "https://github.com/water-rs/waterkit", rev = "b6113f8b3aa09402f5fafa95d160d7f6dc0715e5" }
 # The renderer and theme the test graph mounts are their own repositories
 # since the extraction; pin the dev heads that carry the proposal-aware
 # contract this revision requires.
