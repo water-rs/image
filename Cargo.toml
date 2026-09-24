@@ -118,5 +118,5 @@ waterui-watcher-set = { git = "https://github.com/water-rs/waterui", rev = "ac2c
 waterui-webview = { git = "https://github.com/water-rs/waterui", rev = "ac2c89453de8e23b4457fa8d432785791beabe66" }
 waterkit-core = { git = "https://github.com/water-rs/waterkit", rev = "123b0581c908d424826c4f07cd25d5c0cc0d07ec" }
 hydrolysis = { git = "https://github.com/water-rs/hydrolysis", rev = "dfdfdf2327af071a3cc555d3f862ca7b0a81f484" }
-hydrolysis-m3 = { git = "https://github.com/water-rs/hydrolysis-m3", rev = "3c938632f9fecb1003294bbc4e5a6e55cf72ab94" }
+hydrolysis-m3 = { git = "https://github.com/water-rs/hydrolysis-m3", rev = "8f5e4d14b697500e41e6ac7198f87b0395d537fb" }
 waterui = { git = "https://github.com/water-rs/waterui", rev = "ac2c89453de8e23b4457fa8d432785791beabe66" }
