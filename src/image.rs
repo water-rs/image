@@ -31,7 +31,7 @@ use peniko::{
     Blob, ImageAlphaType, ImageBrush, ImageData, ImageFormat, ImageQuality, ImageSampler,
 };
 use waterui_core::layout::Size;
-use waterui_core::{Binding, Environment, SignalExt, View};
+use waterui_core::{Binding, Environment, Signal, SignalExt, View};
 use waterui_graphics::{Scene2D, SceneContent, SceneInvalidator, SceneView};
 use waterui_layout::{ContentMode, frame::Frame};
 
@@ -383,7 +383,7 @@ impl fmt::Debug for ReactiveImageState {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("ReactiveImageState")
-            .field("dimensions", &self.dimensions.get())
+            .field("dimensions", &self.dimensions.snapshot())
             .finish_non_exhaustive()
     }
 }
@@ -521,7 +521,7 @@ impl SceneContent for ReactiveImageSceneContent {
     fn intrinsic_size(&self) -> Option<Size> {
         self.state
             .dimensions
-            .get()
+            .snapshot()
             .and_then(|(width, height)| pixel_size(width, height))
     }
 
@@ -650,7 +650,7 @@ mod tests {
 
         handle.set(Image::new(alloc::vec![0, 0, 0, 255], 1, 1));
 
-        assert_eq!(handle.state.dimensions.get(), Some((1, 1)));
+        assert_eq!(handle.state.dimensions.snapshot(), Some((1, 1)));
         assert_eq!(content.intrinsic_size(), Some(Size::new(1.0, 1.0)));
         let displayed = {
             let brush = handle.state.brush.borrow();
@@ -660,7 +660,7 @@ mod tests {
         assert_eq!(displayed, (1, 1));
 
         handle.clear();
-        assert_eq!(handle.state.dimensions.get(), None);
+        assert_eq!(handle.state.dimensions.snapshot(), None);
         assert!(handle.state.brush.borrow().is_none());
         assert_eq!(content.intrinsic_size(), None);
     }
