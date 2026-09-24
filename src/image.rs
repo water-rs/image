@@ -633,7 +633,7 @@ fn frame_fingerprint(decoded: &DecodedRgba) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        Image, Interpolation, Rc, ReactiveImageSceneContent, SceneContent as _, Size,
+        Image, Interpolation, Rc, ReactiveImageSceneContent, SceneContent as _, Signal, Size,
         reactive_image, rgba16f_to_srgb8,
     };
     use half::f16;

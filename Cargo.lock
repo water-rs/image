@@ -1807,8 +1807,7 @@ dependencies = [
 [[package]]
 name = "hydrolysis-m3"
 version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ec6d1526dd3a3998aeb073835c70efe1511f2d457bc2451696d60c3b1840102"
+source = "git+https://github.com/water-rs/hydrolysis-m3?rev=f3d90b8d7d7a16e04dacdc6d76bd05c0c70378f3#f3d90b8d7d7a16e04dacdc6d76bd05c0c70378f3"
 dependencies = [
  "hydrolysis",
  "material-color-utils",
