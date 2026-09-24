@@ -107,7 +107,7 @@ fn custom_url_section() -> impl View {
                      State(blur): State<Binding<f64>>,
                      State(status): State<Binding<String>>,
                      State(handler): State<DynamicHandler>| {
-                        let url_str = url.get();
+                        let url_str = url.snapshot();
                         if url_str.is_empty() {
                             status.set(String::from("Please enter a URL"));
                             return;
