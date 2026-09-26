@@ -34,13 +34,13 @@ multiple_crate_versions = "allow"
 
 [features]
 default = ["gpu"]
-# Rasterizing an image into a surface of its own, which is what
-# `Image::render_offscreen` does and what a `SceneView` falls back to when the
-# backend does not merge scenes itself.
+# Rasterizing an image into a surface of its own through `Engine<Gpu>`, which is
+# what the offscreen export tests do and what a `SceneView` falls back to when
+# the backend does not merge scenes itself.
 #
-# Drawing needs none of it: an image describes itself as `Scene2D` commands, so
-# a consumer whose backend owns the scene — a CPU-only renderer such as a dew
-# firmware build — turns this off and links no wgpu, no Vello and no rasterizer.
+# Drawing needs none of it: an image records itself as Cherenkov content, so a
+# consumer whose backend owns the scene — a CPU-only renderer such as a dew
+# firmware build — turns this off and links no wgpu.
 gpu = ["waterui-graphics/gpu"]
 
 [dependencies]
@@ -48,9 +48,10 @@ waterui-core = { version = "0.5.0" }
 waterui-graphics = { version = "0.5.0", default-features = false }
 waterui-layout = { version = "0.5.0" }
 waterkit-codec = { version = "0.1.2", default-features = false, features = ["software-fallback"] }
+cherenkov = { git = "https://github.com/water-rs/cherenkov", rev = "ef46abff2e13514ce407d917af8dfb7facede174" }
+color = "0.3.3"
 half = { version = "2.7", default-features = false }
-kurbo = "0.13"
-peniko = "0.6"
+tracing = { version = "0.1", default-features = false }
 num-traits = { version = "0.2", default-features = false }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico", "tiff"] }
 mp4-atom = "0.14.0"
@@ -61,7 +62,6 @@ waterui-testing = "0.5.0"
 # The layout tests mount a scroll view, whose scrollbars need a widget theme the
 # default test theme does not carry.
 hydrolysis-m3 = "0.3.0"
-pollster = "1.0"
 
 # Third-party forks the framework itself patches; a registry dependency does
 # not carry its own patch table, so they are repeated here so this graph

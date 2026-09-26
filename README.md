@@ -2,16 +2,17 @@
 
 High-performance image primitives and decode pipeline for WaterUI.
 
-Decoded pixels are drawn through `waterui-graphics`' engine-neutral `Scene2D`
-contract: one `draw_image` call under the transform that resolves the view's
-content mode. The same component therefore renders on the GPU compute renderer,
-the CPU sparse-strip renderer used on embedded targets, and any backend that
-owns its own scene.
+Decoded pixels are recorded as Cherenkov content through `waterui-graphics`'
+`SceneContent` contract: the engine uploads the pixels once, and each record is
+one image command into the rectangle the view's content mode resolves. The same
+component therefore renders on every Cherenkov backend and inside any backend
+that merges the content into a scene of its own.
 
-Rasterizing an image into a surface of its own — `Image::render_offscreen`, and
-the fallback a `SceneView` takes when the backend does not merge scenes itself —
-needs a GPU device, so it sits behind the default-on `gpu` feature. A consumer
-whose backend owns the scene turns it off and links no Vello and no rasterizer.
+Rasterizing an image into a surface of its own — `waterui-graphics`'
+`OffscreenRenderer` over `Image::into_scene_content()`, and the fallback a
+`SceneView` takes when the backend does not merge scenes itself — needs a GPU
+device, so it sits behind the default-on `gpu` feature. A consumer whose backend
+owns the scene turns it off and links no wgpu.
 
 ## License
 
