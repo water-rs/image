@@ -47,13 +47,21 @@ gpu = ["waterui-graphics/gpu"]
 waterui-core = { version = "0.5.0" }
 waterui-graphics = { version = "0.5.0", default-features = false }
 waterui-layout = { version = "0.5.0" }
-waterkit-codec = { version = "0.1.2", default-features = false, features = ["software-fallback"] }
 half = { version = "2.7", default-features = false }
 kurbo = "0.13"
 peniko = "0.6"
 num-traits = { version = "0.2", default-features = false }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico", "tiff"] }
 mp4-atom = "0.14.0"
+
+# The AV1 software decoder (rav1d and its colour pipeline) is linked only where
+# no platform still-image decoder exists: Android (BitmapFactory), Apple
+# (ImageIO) and wasm decode AVIF through the platform.
+[target.'cfg(not(any(target_os = "android", target_vendor = "apple", target_arch = "wasm32")))'.dependencies]
+waterkit-codec = { version = "0.1.2", default-features = false, features = ["software-fallback"] }
+
+[target.'cfg(any(target_os = "android", target_vendor = "apple", target_arch = "wasm32"))'.dependencies]
+waterkit-codec = { version = "0.1.2", default-features = false }
 
 [dev-dependencies]
 waterui = "0.5.0"
@@ -71,7 +79,7 @@ waterui-image = { path = "." }
 # Pinned to the waterkit head that gates the Linux VA-API stack behind a
 # `vaapi` feature: a still-image decoder must not link `cros-libva` (see
 # water-rs/waterui#1190). Drop this pin once the codec release carries it.
-waterkit-codec = { git = "https://github.com/water-rs/waterkit", rev = "123b0581c908d424826c4f07cd25d5c0cc0d07ec" }
+waterkit-codec = { git = "https://github.com/water-rs/waterkit", rev = "e5290913ee8adb22843fd60047f6a845f2391c5b" }
 # The renderer and theme the test graph mounts are their own repositories
 # since the extraction; pin the dev heads that carry the proposal-aware
 # contract this revision requires.
@@ -116,13 +124,13 @@ waterui-url = { git = "https://github.com/water-rs/waterui", rev = "91c2aa414a4c
 waterui-video = { git = "https://github.com/water-rs/waterui", rev = "91c2aa414a4cd8b771ab5451a157f9477a7b912c" }
 waterui-watcher-set = { git = "https://github.com/water-rs/waterui", rev = "91c2aa414a4cd8b771ab5451a157f9477a7b912c" }
 waterui-webview = { git = "https://github.com/water-rs/waterui", rev = "91c2aa414a4cd8b771ab5451a157f9477a7b912c" }
-waterkit-core = { git = "https://github.com/water-rs/waterkit", rev = "123b0581c908d424826c4f07cd25d5c0cc0d07ec" }
-waterkit-build = { git = "https://github.com/water-rs/waterkit", rev = "123b0581c908d424826c4f07cd25d5c0cc0d07ec" }
-waterkit-clipboard = { git = "https://github.com/water-rs/waterkit", rev = "123b0581c908d424826c4f07cd25d5c0cc0d07ec" }
-waterkit-dialog = { git = "https://github.com/water-rs/waterkit", rev = "123b0581c908d424826c4f07cd25d5c0cc0d07ec" }
-waterkit-fs = { git = "https://github.com/water-rs/waterkit", rev = "123b0581c908d424826c4f07cd25d5c0cc0d07ec" }
-waterkit-location = { git = "https://github.com/water-rs/waterkit", rev = "123b0581c908d424826c4f07cd25d5c0cc0d07ec" }
-waterkit-permission = { git = "https://github.com/water-rs/waterkit", rev = "123b0581c908d424826c4f07cd25d5c0cc0d07ec" }
+waterkit-core = { git = "https://github.com/water-rs/waterkit", rev = "e5290913ee8adb22843fd60047f6a845f2391c5b" }
+waterkit-build = { git = "https://github.com/water-rs/waterkit", rev = "e5290913ee8adb22843fd60047f6a845f2391c5b" }
+waterkit-clipboard = { git = "https://github.com/water-rs/waterkit", rev = "e5290913ee8adb22843fd60047f6a845f2391c5b" }
+waterkit-dialog = { git = "https://github.com/water-rs/waterkit", rev = "e5290913ee8adb22843fd60047f6a845f2391c5b" }
+waterkit-fs = { git = "https://github.com/water-rs/waterkit", rev = "e5290913ee8adb22843fd60047f6a845f2391c5b" }
+waterkit-location = { git = "https://github.com/water-rs/waterkit", rev = "e5290913ee8adb22843fd60047f6a845f2391c5b" }
+waterkit-permission = { git = "https://github.com/water-rs/waterkit", rev = "e5290913ee8adb22843fd60047f6a845f2391c5b" }
 hydrolysis = { git = "https://github.com/water-rs/hydrolysis", rev = "9d3c6fa4c3a7e58c138c835c6e5c0f0ad261352f" }
 hydrolysis-m3 = { git = "https://github.com/water-rs/hydrolysis-m3", rev = "29c821ad297d61ad8f7e42c474652eef92c56768" }
 waterui = { git = "https://github.com/water-rs/waterui", rev = "91c2aa414a4cd8b771ab5451a157f9477a7b912c" }
