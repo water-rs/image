@@ -1,8 +1,8 @@
-//! Renders a real decoded image through the scene contract and writes the
+//! Renders a real decoded image through the content contract and writes the
 //! result out to be looked at.
 //!
-//! An image is drawn by `Scene2D::draw_image` under a transform this crate
-//! derives from the content mode, so the thing under test is the transform: a
+//! An image is drawn by `Draw::image` at a destination rectangle this crate
+//! derives from the content mode, so the thing under test is that rectangle: a
 //! wide source in a square box lands somewhere different for each mode, and the
 //! only way to be sure it landed there is to render it and look.
 //!
@@ -11,21 +11,17 @@
 //! sample sits well inside a flat region of the source image, so a transposed,
 //! mirrored, shifted or unscaled blit misses it.
 //!
-//! What the assertions deliberately do *not* pin is which way up the surface
-//! ends: on Vulkan the classic scene surface blits through a shaderloom-compiled
-//! shader that inverts Y, so every Linux render of one is upside down
-//! (water-rs/waterui#239, open). That is a property of the blit, not of the
-//! transform under test, and the exports carry a corner marker so a reviewer
-//! reading them sees the orientation for themselves. Every sample below is
-//! chosen to mean the same thing either way up.
+//! The fixture's magenta corner marker pins orientation: the engine's readback
+//! defines which way up the frame lands, and the marker lets a reviewer reading
+//! the exports see it for themselves. Every sample below is chosen to mean the
+//! same thing either way up.
 #![cfg(feature = "gpu")]
 
 use std::path::Path;
 
 use image::ImageEncoder as _;
-use waterui_graphics::{
-    GpuRuntime, OffscreenRenderConfig, OffscreenRenderOutput, OffscreenSize, SceneEngine, wgpu,
-};
+use waterui_graphics::cherenkov_gpu::Gpu;
+use waterui_graphics::{OffscreenImage, OffscreenRenderer, OffscreenSize};
 use waterui_image::{ContentMode, Image};
 
 /// Source width. Four times the height, so no mode agrees with any other in a
@@ -83,27 +79,21 @@ fn source_png() -> Vec<u8> {
     png
 }
 
-/// Renders `image` into a `BOX_SIDE` square through the classic scene engine.
+/// Renders `image` into a `BOX_SIDE` square offscreen target.
 ///
 /// The offscreen surface *is* the box here, so the content mode is what places
 /// the image in it; `.resizable()` belongs to the layout wrapper a view body
 /// builds and has nothing to say about a surface of a fixed size.
-///
-/// The engine is pinned rather than left to the adapter so the export is the
-/// same picture on every machine that runs the test.
-fn render(image: Image) -> OffscreenRenderOutput {
+fn render(image: Image) -> OffscreenImage {
+    let renderer =
+        OffscreenRenderer::<Gpu>::new().expect("scene image export requires a working GPU");
     let size = OffscreenSize::try_from_pixels(BOX_SIDE, BOX_SIDE).expect("test size must be valid");
-    let config = OffscreenRenderConfig::new(size)
-        .format(wgpu::TextureFormat::Rgba8Unorm)
-        .scene_engine(SceneEngine::Classic);
-    let runtime = pollster::block_on(GpuRuntime::new())
-        .expect("scene image export requires a working GPU runtime");
-    let mut env = waterui_core::Environment::new();
-    pollster::block_on(image.render_offscreen(&runtime, config, &mut env))
+    image
+        .render_offscreen(&renderer, size, 1.0)
         .expect("offscreen render should succeed")
 }
 
-fn save(output: &OffscreenRenderOutput, name: &str) {
+fn save(output: &OffscreenImage, name: &str) {
     let directory = Path::new("/tmp/waterui_scene_engines");
     std::fs::create_dir_all(directory).expect("output directory must be creatable");
     output
@@ -112,11 +102,8 @@ fn save(output: &OffscreenRenderOutput, name: &str) {
 }
 
 /// The pixel at `(x, y)` of a render.
-fn pixel(output: &OffscreenRenderOutput, x: u32, y: u32) -> [u8; 4] {
-    let offset = ((y * output.width + x) * 4) as usize;
-    output.rgba8[offset..offset + 4]
-        .try_into()
-        .expect("a pixel is four bytes")
+fn pixel(output: &OffscreenImage, x: u32, y: u32) -> [u8; 4] {
+    output.pixel(x, y)
 }
 
 fn decoded_source() -> Image {
