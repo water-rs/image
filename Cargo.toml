@@ -48,7 +48,7 @@ waterui-core = { version = "0.5.0" }
 waterui-graphics = { version = "0.5.0", default-features = false }
 waterui-layout = { version = "0.5.0" }
 waterkit-codec = { version = "0.1.2", default-features = false, features = ["software-fallback"] }
-cherenkov = { git = "https://github.com/water-rs/cherenkov", rev = "bc688ad177f2bba9c3405aa6d7dc1d5b0d8031b9" }
+cherenkov = { git = "https://github.com/water-rs/cherenkov", rev = "f59766d0a165e35e2bb1965c4919e45b6895e357" }
 color = "0.3.3"
 half = { version = "2.7", default-features = false }
 tracing = { version = "0.1", default-features = false }
