@@ -117,12 +117,12 @@ nami-core = { git = "https://github.com/water-rs/nami", rev = "f1db5017f5d64cb45
 # `filtrate-derive` are the members the `.filter(F)` / `.effect(E)` types ride
 # on, so every filtrate in the graph must come from this same revision or a
 # filter type built on one side is a different type on the other.
-cherenkov = { git = "https://github.com/water-rs/cherenkov", rev = "8476ba05147d909bf1d067531761727efda0173d" }
-cherenkov-cpu = { git = "https://github.com/water-rs/cherenkov", rev = "8476ba05147d909bf1d067531761727efda0173d" }
-cherenkov-gpu = { git = "https://github.com/water-rs/cherenkov", rev = "8476ba05147d909bf1d067531761727efda0173d" }
-filtrate = { git = "https://github.com/water-rs/cherenkov", rev = "8476ba05147d909bf1d067531761727efda0173d" }
-filtrate-core = { git = "https://github.com/water-rs/cherenkov", rev = "8476ba05147d909bf1d067531761727efda0173d" }
-filtrate-derive = { git = "https://github.com/water-rs/cherenkov", rev = "8476ba05147d909bf1d067531761727efda0173d" }
+cherenkov = { git = "https://github.com/water-rs/cherenkov", rev = "a7708216db67bbf976e1fe36429a6a54cf82ba8a" }
+cherenkov-cpu = { git = "https://github.com/water-rs/cherenkov", rev = "a7708216db67bbf976e1fe36429a6a54cf82ba8a" }
+cherenkov-gpu = { git = "https://github.com/water-rs/cherenkov", rev = "a7708216db67bbf976e1fe36429a6a54cf82ba8a" }
+filtrate = { git = "https://github.com/water-rs/cherenkov", rev = "a7708216db67bbf976e1fe36429a6a54cf82ba8a" }
+filtrate-core = { git = "https://github.com/water-rs/cherenkov", rev = "a7708216db67bbf976e1fe36429a6a54cf82ba8a" }
+filtrate-derive = { git = "https://github.com/water-rs/cherenkov", rev = "a7708216db67bbf976e1fe36429a6a54cf82ba8a" }
 
 # The framework head the port builds against: water-rs/waterui
 # feat/cherenkov-cutover-w at 70689a022, which retires the Vello `Scene2D` /
