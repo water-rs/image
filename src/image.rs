@@ -1,7 +1,7 @@
 //! Image views drawn through the engine-neutral content contract.
 //!
 //! This module provides [`Image`], a view that displays decoded pixels. The
-//! pixels register with the engine's [`SceneResources`] on the first frame
+//! pixels register with the recording's [`RecordingResources`] on the first frame
 //! `build_scene` draws them, and each recording is a single `Draw::image`
 //! call with the destination rectangle placement resolved, so the same view
 //! renders on the GPU rasterizer, on a CPU rasterizer an embedded build
@@ -22,9 +22,8 @@
 use alloc::borrow::ToOwned;
 use alloc::rc::Rc;
 use alloc::string::String;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
-#[cfg(target_arch = "wasm32")]
-use core::cell::Cell;
 use core::cell::RefCell;
 use core::fmt;
 
@@ -38,7 +37,7 @@ use waterui_graphics::cherenkov_gpu::Gpu;
 use waterui_graphics::color::linear_to_srgb;
 #[cfg(feature = "gpu")]
 use waterui_graphics::{OffscreenError, OffscreenImage, OffscreenRenderer, OffscreenSize};
-use waterui_graphics::{Registered, SceneContent, SceneInvalidator, SceneResources, SceneView};
+use waterui_graphics::{RecordingResources, Registered, SceneContent, SceneInvalidator, SceneView};
 use waterui_layout::{ContentMode, frame::Frame};
 
 use crate::codec::{self, DecodedRgba};
@@ -377,30 +376,12 @@ struct ReactiveImageState {
     /// The frame last published — pixels plus their sampling — or `None`
     /// while there is nothing to draw. `build_scene` draws from it.
     frame: RefCell<Option<(Pixels, Sampling)>>,
-    /// The live engine registration the mounted content is drawing. The
-    /// content mints it on the frame that first draws pixels; `publish`
-    /// replaces its pixels in place for every later frame, so one
-    /// registration — and one `ImageId` — serves the mount's whole life.
-    image: RefCell<Option<Registered<EngineImage<Rgba8>>>>,
-    /// The pixels `image` currently carries: publish-side replacement and
-    /// `build_scene` registration both update it, so a frame already swapped
-    /// in place is never uploaded a second time.
-    uploaded: RefCell<Option<Pixels>>,
     /// The displayed frame's pixel dimensions, as a binding the view's
     /// frame modifiers read so a size change re-lays out without a rebuild.
     dimensions: Binding<Option<(u32, u32)>>,
     /// The invalidator the mounted content registered, so `publish` can ask
     /// for the frame that re-records the new frame's placement.
     invalidator: RefCell<Option<SceneInvalidator>>,
-    /// wasm only: the newest pixels awaiting an in-flight swap. `replace`
-    /// resolves through the engine's local executor, so publishes during a
-    /// swap queue here rather than overlapping futures — the queue holds one
-    /// entry because only the newest pixels matter.
-    #[cfg(target_arch = "wasm32")]
-    pending_swap: RefCell<Option<Pixels>>,
-    /// wasm only: whether the swap task driving `pending_swap` is running.
-    #[cfg(target_arch = "wasm32")]
-    swap_in_flight: Cell<bool>,
 }
 
 impl fmt::Debug for ReactiveImageState {
@@ -408,115 +389,29 @@ impl fmt::Debug for ReactiveImageState {
         formatter
             .debug_struct("ReactiveImageState")
             .field("dimensions", &self.dimensions.snapshot())
-            .field("registered", &self.image.borrow().is_some())
+            .field("published", &self.frame.borrow().is_some())
             .finish_non_exhaustive()
     }
 }
 
 impl ReactiveImageState {
-    /// Stores `frame` as the one to draw, swaps it into the live registration
-    /// when there is one, and asks the content for the frame that re-records
-    /// it.
+    /// Stores `frame` as the one to draw and asks the content for the frame
+    /// that re-records it.
     ///
     /// Registration itself can only happen inside `build_scene` — that is
-    /// where the engine's `SceneResources` arrive — so a frame published
-    /// before the first build (or after `clear`) waits for it; the content
-    /// registers it there. Every publish after that reaches the held
-    /// [`Registered`] handle here and swaps its pixels behind the same
-    /// `ImageId` via `Image::replace`, so the installed recording shows the
-    /// new pixels before the re-recording even lands. A recording still
-    /// naming the id draws the new pixels under the old placement only until
-    /// that next frame — the engine orders the replacement with renders, so
-    /// no frame ever samples a partly written image.
-    ///
-    /// On wasm `replace` is a future, so the swap runs on the UI-local
-    /// executor the host installed (`executor_core::spawn_local`, the same
-    /// entry point the framework's own components use for UI-local async
-    /// work); it resolves once the executor has applied the replacement,
-    /// and the same `uploaded`/invalidation bookkeeping runs there.
+    /// where the recording's `RecordingResources` arrive — so a publish
+    /// never touches the engine itself. The frame waits in the shared state,
+    /// and the next `build_scene` registers its pixels and names the
+    /// registration in the recording it produces: a recording already
+    /// installed keeps drawing the pixels it was recorded with until that
+    /// replacement lands, so no frame ever samples a partly written image.
     fn publish(state: &Rc<Self>, frame: Option<(Pixels, Sampling)>) {
         state.dimensions.set(
             frame
                 .as_ref()
                 .map(|(pixels, _)| (pixels.width, pixels.height)),
         );
-        swap_in_place(state, frame.as_ref());
         *state.frame.borrow_mut() = frame;
-        if let Some(invalidator) = state.invalidator.borrow().as_ref() {
-            invalidator();
-        }
-    }
-}
-
-/// Swaps `frame`'s pixels into the registration `state` holds, when there
-/// is one. No-op without a registration — `build_scene` registers the frame
-/// itself on the next recording.
-#[cfg(not(target_arch = "wasm32"))]
-fn swap_in_place(state: &Rc<ReactiveImageState>, frame: Option<&(Pixels, Sampling)>) {
-    if let (Some(image), Some((pixels, _))) = (state.image.borrow().as_ref(), frame)
-        && let Some(data) = pixels.upload()
-    {
-        image
-            .replace(data)
-            .unwrap_or_else(|error| panic!("image replacement rejected by the engine: {error}"));
-        *state.uploaded.borrow_mut() = Some(pixels.clone());
-    }
-}
-
-/// Queues `frame`'s pixels onto the held registration through the swap
-/// task, or spawns that task on the UI-local executor when none is running.
-/// Serializing the futures keeps swaps newest-last, the same order native
-/// synchronous replaces produce.
-#[cfg(target_arch = "wasm32")]
-fn swap_in_place(state: &Rc<ReactiveImageState>, frame: Option<&(Pixels, Sampling)>) {
-    if state.image.borrow().is_none() {
-        return;
-    }
-    let Some((pixels, _)) = frame else {
-        return;
-    };
-    if pixels.upload().is_none() {
-        return;
-    }
-    *state.pending_swap.borrow_mut() = Some(pixels.clone());
-    if state.swap_in_flight.replace(true) {
-        return;
-    }
-    let state = Rc::clone(state);
-    executor_core::spawn_local(async move { swap_task(&state).await }).detach();
-}
-
-/// Applies every queued swap, newest first, until `pending_swap` drains.
-/// `uploaded` and the invalidator update only for a handle the mount still
-/// holds — a swap landing after a release touches nothing live.
-#[cfg(target_arch = "wasm32")]
-async fn swap_task(state: &Rc<ReactiveImageState>) {
-    loop {
-        let next = state
-            .pending_swap
-            .borrow_mut()
-            .take()
-            .and_then(|pixels| state.image.borrow().clone().map(|image| (pixels, image)));
-        let Some((pixels, image)) = next else {
-            state.swap_in_flight.set(false);
-            // A publish can land between the take and the flag clearing;
-            // re-check before leaving so it is not stranded.
-            if state.pending_swap.borrow().is_some() {
-                state.swap_in_flight.set(true);
-                continue;
-            }
-            return;
-        };
-        let Some(data) = pixels.upload() else {
-            continue;
-        };
-        image
-            .replace(data)
-            .await
-            .unwrap_or_else(|error| panic!("image replacement rejected by the engine: {error}"));
-        if state.image.borrow().as_ref().map(|held| held.id()) == Some(image.id()) {
-            *state.uploaded.borrow_mut() = Some(pixels);
-        }
         if let Some(invalidator) = state.invalidator.borrow().as_ref() {
             invalidator();
         }
@@ -548,9 +443,8 @@ impl ReactiveImageHandle {
 /// subtree.
 ///
 /// One [`SceneView`] mounts [`ReactiveImageSceneContent`] for the view's
-/// whole life: a published frame swaps its pixels into the registration the
-/// recording already names through `Image::replace`, so nothing remounts and
-/// no state inside the subtree is lost.
+/// whole life: a published frame registers through the recording that next
+/// builds it, so nothing remounts and no state inside the subtree is lost.
 #[derive(Debug)]
 pub struct ReactiveImage {
     state: Rc<ReactiveImageState>,
@@ -591,6 +485,8 @@ impl View for ReactiveImage {
         let frame = Frame::new(SceneView::new(ReactiveImageSceneContent {
             state: Rc::clone(&self.state),
             content_mode: self.content_mode,
+            image: None,
+            uploaded: None,
         }));
         if self.resizable {
             frame
@@ -605,14 +501,8 @@ impl View for ReactiveImage {
 pub fn reactive_image() -> (ReactiveImageHandle, ReactiveImage) {
     let state = Rc::new(ReactiveImageState {
         frame: RefCell::new(None),
-        image: RefCell::new(None),
-        uploaded: RefCell::new(None),
         dimensions: Binding::container(None),
         invalidator: RefCell::new(None),
-        #[cfg(target_arch = "wasm32")]
-        pending_swap: RefCell::new(None),
-        #[cfg(target_arch = "wasm32")]
-        swap_in_flight: Cell::new(false),
     });
     (
         ReactiveImageHandle {
@@ -628,23 +518,30 @@ pub fn reactive_image() -> (ReactiveImageHandle, ReactiveImage) {
 
 /// Scene content that draws whichever frame the handle last published.
 ///
-/// The registration the recording names lives in the shared state rather
-/// than on the content, so `publish` can reach the handle for the in-place
-/// swap between recordings. Handles are only ever *released* inside
-/// `build_scene` (or on drop, when the content's recording is tearing down
-/// anyway): the contract is that a recording still naming a resource is
-/// never drawn after its release, and only `build_scene` knows the installed
-/// recording has moved on.
+/// The content holds the [`Registered`] handle for the frame it last
+/// uploaded. A publish swaps nothing behind a recording: the next
+/// `build_scene` registers the new pixels, and the recording it produces
+/// names them. Handles are only ever *released* inside `build_scene` (or on
+/// drop, when the content's recording is tearing down anyway): the contract
+/// is that a recording still naming a resource is never drawn after its
+/// release, and only `build_scene` knows the installed recording has moved
+/// on.
 struct ReactiveImageSceneContent {
     state: Rc<ReactiveImageState>,
     content_mode: Option<ContentMode>,
+    /// The registration of the frame `uploaded` holds, minted lazily inside
+    /// `build_scene`. `None` until the first frame that draws pixels.
+    image: Option<Registered<EngineImage<Rgba8>>>,
+    /// The pixels `image` carries, so a re-recording of an unchanged frame
+    /// keeps naming the one registration instead of re-uploading it.
+    uploaded: Option<Pixels>,
 }
 
 impl ReactiveImageSceneContent {
     /// Lets go of the registration the recordings have stopped naming.
-    fn release(&self) {
-        self.state.image.borrow_mut().take();
-        self.state.uploaded.borrow_mut().take();
+    fn release(&mut self) {
+        self.image = None;
+        self.uploaded = None;
     }
 }
 
@@ -661,7 +558,7 @@ impl SceneContent for ReactiveImageSceneContent {
     fn build_scene(
         &mut self,
         recorder: &mut Recorder,
-        resources: &SceneResources,
+        resources: &mut RecordingResources<'_>,
         width: f32,
         height: f32,
     ) -> bool {
@@ -674,22 +571,30 @@ impl SceneContent for ReactiveImageSceneContent {
             self.release();
             return false;
         };
-        if self.state.image.borrow().is_none() {
-            // The first frame that draws pixels registers them; publishes
-            // after that swap in place through `Image::replace`.
-            let image = resources
-                .image(data)
-                .unwrap_or_else(|error| panic!("image upload rejected by the engine: {error}"));
-            *self.state.image.borrow_mut() = Some(image);
-            *self.state.uploaded.borrow_mut() = Some(pixels.clone());
+        // Every publish lands here as a new frame: its pixels get their own
+        // registration rather than swapping behind the id the installed
+        // recording already names — `Registered` is opaque, and the
+        // recording that draws it holds it.
+        let unchanged = self.uploaded.as_ref().is_some_and(|uploaded| {
+            uploaded.width == pixels.width
+                && uploaded.height == pixels.height
+                && Arc::ptr_eq(&uploaded.data, &pixels.data)
+        });
+        if !unchanged {
+            self.image =
+                Some(resources.image(data).unwrap_or_else(|error| {
+                    panic!("image upload rejected by the engine: {error}")
+                }));
+            self.uploaded = Some(pixels.clone());
         }
-        let image = self.state.image.borrow();
-        let image = image
-            .as_ref()
-            .expect("a published frame always has a registration after the upload block");
+        let id = resources.name(
+            self.image
+                .as_ref()
+                .expect("a published frame always has a registration after the upload block"),
+        );
         crate::scene::draw(
             recorder,
-            image.id(),
+            id,
             (pixels.width, pixels.height),
             sampling,
             self.content_mode,
@@ -856,6 +761,10 @@ mod tests {
         surface: waterui_graphics::cherenkov::Surface<waterui_graphics::cherenkov_gpu::Gpu>,
         content: ReactiveImageSceneContent,
         invalidations: Rc<Cell<u32>>,
+        /// The resources the installed recording holds. A host keeps the
+        /// last recording's `HeldResources` until the replacement installs;
+        /// dropping it earlier would release every handle it names.
+        installed: waterui_graphics::HeldResources,
     }
 
     #[cfg(all(feature = "gpu", not(target_arch = "wasm32")))]
@@ -863,7 +772,9 @@ mod tests {
         fn new(state: Rc<ReactiveImageState>) -> Self {
             use waterui_graphics::cherenkov::{Engine, Offscreen, OffscreenFormat};
             use waterui_graphics::cherenkov_gpu::{Gpu, GpuConfig};
-            use waterui_graphics::{SceneContent as _, SceneInvalidator, SceneResources};
+            use waterui_graphics::{
+                HeldResources, SceneContent as _, SceneInvalidator, SceneResources,
+            };
 
             let engine = Rc::new(
                 Engine::<Gpu>::new(GpuConfig::default()).expect("the GPU engine failed to start"),
@@ -875,6 +786,8 @@ mod tests {
             let mut content = ReactiveImageSceneContent {
                 state,
                 content_mode: None,
+                image: None,
+                uploaded: None,
             };
             let observed = Rc::clone(&invalidations);
             let invalidator: SceneInvalidator = Rc::new(move || {
@@ -887,6 +800,7 @@ mod tests {
                 surface,
                 content,
                 invalidations,
+                installed: HeldResources::empty(),
             }
         }
 
@@ -895,10 +809,12 @@ mod tests {
             use waterui_graphics::SceneContent as _;
             use waterui_graphics::cherenkov::{Command, FrameTime};
 
+            let mut resources = self.resources.recording();
             let mut recorded = self.surface.record(|recorder| {
                 self.content
-                    .build_scene(recorder, &self.resources, 64.0, 64.0);
+                    .build_scene(recorder, &mut resources, 64.0, 64.0);
             });
+            let held = resources.finish();
             let drawn = recorded
                 .snapshot()
                 .commands()
@@ -911,17 +827,18 @@ mod tests {
             self.surface.update(|tx| {
                 tx[self.surface.root()].content(recorded);
             });
+            self.installed = held;
             self.engine.render(FrameTime::now()).expect("render");
             drawn
         }
     }
 
-    /// publish → register once → replace in place → release on clear: the
-    /// mount's whole life served by one `ImageId`, and every publish asks for
-    /// the frame that re-records the new placement.
+    /// publish → the next recording registers the new frame → a new
+    /// `ImageId`; an unchanged frame keeps naming the one registration, and
+    /// clear releases the content's handle inside `build_scene`.
     #[cfg(all(feature = "gpu", not(target_arch = "wasm32")))]
     #[test]
-    fn published_frames_replace_the_one_registration() {
+    fn published_frames_draw_through_their_own_registrations() {
         let (handle, view) = reactive_image();
         let mut mount = Mount::new(Rc::clone(&view.state));
 
@@ -930,15 +847,21 @@ mod tests {
         handle.set(Image::new(vec![255, 0, 0, 255], 1, 1));
         assert_eq!(mount.invalidations.get(), 1);
         let drawn = mount.frame();
-        let [id] = drawn[..] else {
+        let [first] = drawn[..] else {
             panic!("the first drawn frame must name exactly one image: {drawn:?}")
         };
-        let registration = view.state.image.borrow().as_ref().map(|image| image.id());
-        assert_eq!(registration, Some(id), "the mount holds what it recorded");
+        assert!(
+            mount.content.image.is_some(),
+            "the mount keeps the registration it recorded"
+        );
 
-        // A new frame replaces the pixels behind the same id — publish swaps
-        // them on the held registration — and the re-recording keeps naming
-        // it: a new upload would mint a new id.
+        // Re-recording the same frame names the same id — the registration
+        // is still live, so no second upload happens.
+        let drawn = mount.frame();
+        assert_eq!(drawn, vec![first], "an unchanged frame names the same id");
+
+        // A publish stores new pixels for build_scene: the re-recorded frame
+        // names the new registration, a different id than the old pixels'.
         handle.set(Image::new(
             vec![
                 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255,
@@ -948,28 +871,36 @@ mod tests {
         ));
         assert_eq!(mount.invalidations.get(), 2);
         assert_eq!(
-            view.state
+            mount
+                .content
                 .uploaded
-                .borrow()
+                .as_ref()
+                .map(|pixels| (pixels.width, pixels.height)),
+            Some((1, 1)),
+            "publish itself registers nothing: the pixels wait for build_scene"
+        );
+        let drawn = mount.frame();
+        let [second] = drawn[..] else {
+            panic!("the published frame must name exactly one image: {drawn:?}")
+        };
+        assert_ne!(first, second, "new pixels register as a new image");
+        assert_eq!(
+            mount
+                .content
+                .uploaded
                 .as_ref()
                 .map(|pixels| (pixels.width, pixels.height)),
             Some((2, 2)),
-            "publish must replace the held registration in place"
-        );
-        let drawn = mount.frame();
-        assert_eq!(drawn, vec![id], "the re-recorded frame names the same id");
-        assert!(
-            view.state.image.borrow().as_ref().map(|image| image.id()) == Some(id),
-            "still one registration"
+            "build_scene registered the published pixels"
         );
 
         // Clearing releases the registration inside build_scene: the new
-        // recording names nothing and the mount holds no handle.
+        // recording names nothing and the content holds no handle.
         handle.clear();
         let drawn = mount.frame();
         assert!(drawn.is_empty());
-        assert!(view.state.image.borrow().is_none());
-        assert!(view.state.uploaded.borrow().is_none());
+        assert!(mount.content.image.is_none());
+        assert!(mount.content.uploaded.is_none());
     }
 
     #[test]

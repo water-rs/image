@@ -4,6 +4,12 @@
 //! image, checked through the semantic runtime rather than by inspecting the
 //! content: a vertical scroll view names the width and leaves the height open,
 //! which is exactly the case that used to collapse to zero.
+//!
+//! These mount through `waterui-testing` against a Hydrolysis backend, so the
+//! whole file sits behind the `host-e2e` feature until a hydrolysis revision
+//! exists that compiles against the pinned waterui.
+
+#![cfg(feature = "host-e2e")]
 
 use hydrolysis_m3::Material3;
 use waterui::ViewExt as _;
