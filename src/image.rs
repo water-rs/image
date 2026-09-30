@@ -324,7 +324,7 @@ impl Image {
     ///
     /// Returns an error when the offscreen surface cannot be created, the
     /// frame cannot render, or the target cannot be read back.
-    #[cfg(feature = "gpu")]
+    #[cfg(all(feature = "gpu", not(target_arch = "wasm32")))]
     pub fn render_offscreen(
         self,
         renderer: &OffscreenRenderer<Gpu>,
@@ -332,6 +332,32 @@ impl Image {
         scale: f32,
     ) -> Result<OffscreenImage, OffscreenError> {
         renderer.render(&mut self.into_scene_content(), size, scale)
+    }
+
+    /// Renders this image into an offscreen target and reads the frame back.
+    ///
+    /// `renderer` owns the engine the pixels register against; `size` is the
+    /// render target in pixels and `scale` the point-to-pixel factor the
+    /// content's box derives from — `1.0` draws one point per pixel.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the offscreen surface cannot be created, the
+    /// frame cannot render, or the target cannot be read back.
+    #[cfg(all(feature = "gpu", target_arch = "wasm32"))]
+    #[allow(
+        clippy::future_not_send,
+        reason = "the engine's wasm32 API is !Send by design and every future executes on the browser's single-threaded executor"
+    )]
+    pub async fn render_offscreen(
+        self,
+        renderer: &OffscreenRenderer<Gpu>,
+        size: OffscreenSize,
+        scale: f32,
+    ) -> Result<OffscreenImage, OffscreenError> {
+        renderer
+            .render(&mut self.into_scene_content(), size, scale)
+            .await
     }
 
     fn from_decoded(decoded: DecodedRgba) -> Self {
