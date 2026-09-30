@@ -647,7 +647,7 @@ checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 [[package]]
 name = "cherenkov"
 version = "0.0.0"
-source = "git+https://github.com/water-rs/cherenkov?rev=8476ba05147d909bf1d067531761727efda0173d#8476ba05147d909bf1d067531761727efda0173d"
+source = "git+https://github.com/water-rs/cherenkov?rev=a7708216db67bbf976e1fe36429a6a54cf82ba8a#a7708216db67bbf976e1fe36429a6a54cf82ba8a"
 dependencies = [
  "color",
  "filtrate-core",
@@ -665,7 +665,7 @@ dependencies = [
 [[package]]
 name = "cherenkov-gpu"
 version = "0.0.0"
-source = "git+https://github.com/water-rs/cherenkov?rev=8476ba05147d909bf1d067531761727efda0173d#8476ba05147d909bf1d067531761727efda0173d"
+source = "git+https://github.com/water-rs/cherenkov?rev=a7708216db67bbf976e1fe36429a6a54cf82ba8a#a7708216db67bbf976e1fe36429a6a54cf82ba8a"
 dependencies = [
  "bytemuck",
  "cherenkov",
@@ -693,7 +693,7 @@ dependencies = [
 [[package]]
 name = "cherenkov-shader"
 version = "0.0.0"
-source = "git+https://github.com/water-rs/cherenkov?rev=8476ba05147d909bf1d067531761727efda0173d#8476ba05147d909bf1d067531761727efda0173d"
+source = "git+https://github.com/water-rs/cherenkov?rev=a7708216db67bbf976e1fe36429a6a54cf82ba8a#a7708216db67bbf976e1fe36429a6a54cf82ba8a"
 dependencies = [
  "naga 30.0.1",
  "thiserror 2.0.21",
@@ -1229,7 +1229,7 @@ checksum = "b97b65636e5b9ef369943878ac74335ba1c55c1cb6adbf1e2c293c624248d693"
 [[package]]
 name = "filtrate"
 version = "0.2.1"
-source = "git+https://github.com/water-rs/cherenkov?rev=8476ba05147d909bf1d067531761727efda0173d#8476ba05147d909bf1d067531761727efda0173d"
+source = "git+https://github.com/water-rs/cherenkov?rev=a7708216db67bbf976e1fe36429a6a54cf82ba8a#a7708216db67bbf976e1fe36429a6a54cf82ba8a"
 dependencies = [
  "bytemuck",
  "cherenkov-shader",
@@ -1247,12 +1247,12 @@ dependencies = [
 [[package]]
 name = "filtrate-core"
 version = "0.2.0"
-source = "git+https://github.com/water-rs/cherenkov?rev=8476ba05147d909bf1d067531761727efda0173d#8476ba05147d909bf1d067531761727efda0173d"
+source = "git+https://github.com/water-rs/cherenkov?rev=a7708216db67bbf976e1fe36429a6a54cf82ba8a#a7708216db67bbf976e1fe36429a6a54cf82ba8a"
 
 [[package]]
 name = "filtrate-derive"
 version = "0.1.0"
-source = "git+https://github.com/water-rs/cherenkov?rev=8476ba05147d909bf1d067531761727efda0173d#8476ba05147d909bf1d067531761727efda0173d"
+source = "git+https://github.com/water-rs/cherenkov?rev=a7708216db67bbf976e1fe36429a6a54cf82ba8a#a7708216db67bbf976e1fe36429a6a54cf82ba8a"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -6947,7 +6947,7 @@ source = "git+https://github.com/Dicklesworthstone/rust-block?rev=b39ae859d1ee8e
 [[patch.unused]]
 name = "cherenkov-cpu"
 version = "0.0.0"
-source = "git+https://github.com/water-rs/cherenkov?rev=8476ba05147d909bf1d067531761727efda0173d#8476ba05147d909bf1d067531761727efda0173d"
+source = "git+https://github.com/water-rs/cherenkov?rev=a7708216db67bbf976e1fe36429a6a54cf82ba8a#a7708216db67bbf976e1fe36429a6a54cf82ba8a"
 
 [[patch.unused]]
 name = "vello_hybrid"
