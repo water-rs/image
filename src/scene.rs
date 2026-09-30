@@ -1,8 +1,8 @@
 //! How a decoded image becomes engine content.
 //!
 //! An image is one `Draw::image` call. [`SceneContent::build_scene`]
-//! registers the pixel grid with the engine's [`SceneResources`] on the frame
-//! that first draws it and records the registration's [`ImageId`] against
+//! registers the pixel grid with the recording's [`RecordingResources`] on the frame
+//! that first draws it and names the registration's [`ImageId`] against
 //! the destination rectangle the content mode resolves — the box the layout
 //! gave the view, or the fitted or filling rectangle centred in it. The
 //! [`Registered`] handle stays with the content for as long as its
@@ -22,7 +22,7 @@ use waterui_graphics::cherenkov::kurbo::{Point, Rect, Size};
 use waterui_graphics::cherenkov::{
     Draw as _, Image, ImageData, ImageId, Recorder, Rgba8, Sampling,
 };
-use waterui_graphics::{Registered, SceneContent, SceneResources};
+use waterui_graphics::{RecordingResources, Registered, SceneContent};
 use waterui_layout::ContentMode;
 
 /// Decoded straight-alpha sRGB8 pixels, shared between the view that owns them
@@ -222,7 +222,7 @@ impl SceneContent for ImageSceneContent {
     fn build_scene(
         &mut self,
         recorder: &mut Recorder,
-        resources: &SceneResources,
+        resources: &mut RecordingResources<'_>,
         width: f32,
         height: f32,
     ) -> bool {
@@ -232,9 +232,10 @@ impl SceneContent for ImageSceneContent {
                     .image(data)
                     .unwrap_or_else(|error| panic!("image upload rejected by the engine: {error}"))
             });
+            let id = resources.name(image);
             draw(
                 recorder,
-                image.id(),
+                id,
                 (self.pixels.width, self.pixels.height),
                 self.sampling,
                 self.mode,
