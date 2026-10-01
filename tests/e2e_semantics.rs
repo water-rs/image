@@ -1,10 +1,4 @@
 //! End-to-end accessibility-semantics tests for the `image` component.
-//!
-//! These mount the view through `waterui-testing` against a Hydrolysis
-//! backend, so the whole file sits behind the `host-e2e` feature until a
-//! hydrolysis revision exists that compiles against the pinned waterui.
-
-#![cfg(feature = "host-e2e")]
 
 use image::ImageEncoder as _;
 use waterui::ViewExt as _;

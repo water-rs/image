@@ -42,11 +42,6 @@ default = ["gpu"]
 # dew firmware build — turns this off and links no wgpu, no cherenkov-gpu and
 # no rasterizer.
 gpu = ["waterui-graphics/gpu"]
-# The mounted-runtime tests in `tests/e2e_semantics.rs` and
-# `tests/intrinsic_size.rs`. They mount through `waterui-testing` against the
-# pinned hydrolysis / hydrolysis-m3 cutover revisions, which implement the
-# `SceneContent` contract.
-host-e2e = []
 
 [dependencies]
 waterui-core = { version = "0.5.0" }
@@ -67,12 +62,10 @@ waterkit-codec = { version = "0.1.4", default-features = false, features = ["sof
 waterkit-codec = { version = "0.1.4", default-features = false }
 
 [dev-dependencies]
-# Dev-deps for the `host-e2e` feature: `waterui-testing` mounts the view
-# against a hydrolysis host, and `hydrolysis-m3` supplies the theme the tests
-# style it with. The host crates ride the Cherenkov cutover revisions pinned
-# in the patch table below.
 waterui = "0.5.0"
 waterui-testing = "0.5.0"
+# The layout tests mount a scroll view, whose scrollbars need a widget theme the
+# default test theme does not carry.
 hydrolysis-m3 = "0.3.0"
 pollster = "1.0"
 
@@ -181,7 +174,7 @@ waterkit-video-streaming = { git = "https://github.com/water-rs/waterkit", rev =
 # 0.1.2 registry release — pin the same rev as the framework's lock.
 shaderloom = { git = "https://github.com/water-rs/shaderloom", rev = "84c37c8314f1bb6d228fce30f78d94872247a18f" }
 
-# The `host-e2e` host stack rides the coordinated cutover revisions: the
+# The mounted-test host stack rides the coordinated cutover revisions: the
 # hydrolysis port that implements `SceneContent`, and the Material 3 theme
 # ported beside it. The vello fork is the one the framework's patch table
 # carries for the crates in the host graph that still draw through vello.
