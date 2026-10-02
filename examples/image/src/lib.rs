@@ -8,6 +8,7 @@
 //! - Custom URL loading with TextField and Button
 
 use waterui::app::App;
+use waterui::graphics::FilterViewExt;
 use waterui::media::Photo;
 use waterui::media::photo::Event as PhotoEvent;
 use waterui::prelude::slider::slider;
