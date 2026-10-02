@@ -246,6 +246,13 @@ impl SceneContent for ImageSceneContent {
         false
     }
 
+    // The `Registered` handle belongs to the engine that minted it; the
+    // replacement engine re-registers `pixels` on the next `build_scene`,
+    // which is where registrations live anyway.
+    fn rebuild_for_engine(&mut self) {
+        self.image = None;
+    }
+
     fn intrinsic_size(&self) -> Option<LayoutSize> {
         pixel_size(self.pixels.width, self.pixels.height)
     }
