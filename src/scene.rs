@@ -360,8 +360,8 @@ mod tests {
 
     #[test]
     fn a_degenerate_box_or_image_draws_nothing() {
-        assert!(record((80, 20), None, 0.0, 100.0).images.is_empty());
-        assert!(record((0, 0), None, 100.0, 100.0).images.is_empty());
+        assert_eq!(record((80, 20), None, 0.0, 100.0).images, []);
+        assert_eq!(record((0, 0), None, 100.0, 100.0).images, []);
     }
 
     /// The natural size is the pixel grid at one pixel per unit, whatever the

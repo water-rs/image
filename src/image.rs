@@ -924,7 +924,7 @@ mod tests {
         // recording names nothing and the content holds no handle.
         handle.clear();
         let drawn = mount.frame();
-        assert!(drawn.is_empty());
+        assert_eq!(drawn, []);
         assert!(mount.content.image.is_none());
         assert!(mount.content.uploaded.is_none());
     }
