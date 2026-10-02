@@ -145,7 +145,7 @@ waterui-barcode = { git = "https://github.com/water-rs/barcode", rev = "66f61c08
 waterui-canvas = { git = "https://github.com/water-rs/canvas", rev = "86bbeb637c2792e69f4f6ddd2d453c3d32d06bc6" }
 waterui-chart = { git = "https://github.com/water-rs/chart", rev = "ff481c3d319b7d025a1fa0c1dcdb283f92be9689" }
 waterui-map-gpu = { git = "https://github.com/water-rs/map-gpu", rev = "13e199d255a11637e03341e0a947447851eff85e" }
-waterui-video-gpu = { git = "https://github.com/water-rs/video-gpu", rev = "334460886d5e6da7841c58c82835448c26bdcf75" }
+waterui-video-gpu = { git = "https://github.com/water-rs/video-gpu", rev = "0c5f88cf24f59423e2fdfc8b2a795b7438468f80" }
 waterui-particle = { git = "https://github.com/water-rs/particle", rev = "e27ae84666ee58c2ff4adae16d9227baf7efc3f2" }
 
 # Every waterkit crate the codec graph shares types across rides the same rev
@@ -178,8 +178,8 @@ shaderloom = { git = "https://github.com/water-rs/shaderloom", rev = "84c37c8314
 # hydrolysis port that implements `SceneContent`, and the Material 3 theme
 # ported beside it. The vello fork is the one the framework's patch table
 # carries for the crates in the host graph that still draw through vello.
-hydrolysis = { git = "https://github.com/water-rs/hydrolysis", rev = "783208625bf5e1abdcb8c7a5dc241e599cccd4c8" }
-hydrolysis-m3 = { git = "https://github.com/water-rs/hydrolysis-m3", rev = "af90237154cd26080e89bf0ef0ab9828f0bb9a67" }
+hydrolysis = { git = "https://github.com/water-rs/hydrolysis", rev = "a833de993561aa1a10682baed4b13fd83d0c687e" }
+hydrolysis-m3 = { git = "https://github.com/water-rs/hydrolysis-m3", rev = "a3ff145ac5458c8d62c273e401fee68dce3c4521" }
 vello = { git = "https://github.com/lexoliu/vello", rev = "76292095f408cf04b901023c2053f8d424652f06" }
 
 # Mirrored from water-rs/cherenkov's workspace [patch.crates-io] (cherenkov#229).
