@@ -317,17 +317,20 @@ mod tests {
     }
 
     fn record(pixels: (u32, u32), mode: Option<ContentMode>, width: f32, height: f32) -> Recorded {
-        let mut content = Content::record(|recorder| {
-            draw(
-                recorder,
-                IMAGE,
-                pixels,
-                Sampling::Linear,
-                mode,
-                width,
-                height,
-            );
-        });
+        let mut content = Content::record(
+            &waterui_graphics::cherenkov::LayoutSize::new(),
+            |recorder| {
+                draw(
+                    recorder,
+                    IMAGE,
+                    pixels,
+                    Sampling::Linear,
+                    mode,
+                    width,
+                    height,
+                );
+            },
+        );
         let mut recorded = Recorded {
             images: Vec::new(),
             clips: 0,
