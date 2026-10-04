@@ -31,10 +31,10 @@ use half::f16;
 use num_traits::ToPrimitive as _;
 use waterui_core::layout::Size as LayoutSize;
 use waterui_core::{Binding, Environment, Signal, SignalExt, View};
-use waterui_graphics::cherenkov::{Image as EngineImage, Recorder, Rgba8, Sampling};
 #[cfg(feature = "gpu")]
 use waterui_graphics::cherenkov_gpu::Gpu;
 use waterui_graphics::color::linear_to_srgb;
+use waterui_graphics::draw::{ImageId, Recorder, Sampling};
 #[cfg(feature = "gpu")]
 use waterui_graphics::{OffscreenError, OffscreenImage, OffscreenRenderer, OffscreenSize};
 use waterui_graphics::{RecordingResources, Registered, SceneContent, SceneInvalidator, SceneView};
@@ -557,7 +557,7 @@ struct ReactiveImageSceneContent {
     content_mode: Option<ContentMode>,
     /// The registration of the frame `uploaded` holds, minted lazily inside
     /// `build_scene`. `None` until the first frame that draws pixels.
-    image: Option<Registered<EngineImage<Rgba8>>>,
+    image: Option<Registered<ImageId>>,
     /// The pixels `image` carries, so a re-recording of an unchanged frame
     /// keeps naming the one registration instead of re-uploading it.
     uploaded: Option<Pixels>,
@@ -765,7 +765,7 @@ mod tests {
     use core::cell::Cell;
     use half::f16;
     use waterui_core::Signal;
-    use waterui_graphics::cherenkov::Sampling;
+    use waterui_graphics::draw::Sampling;
 
     #[test]
     fn reactive_image_publishes_the_latest_frame() {
@@ -839,9 +839,10 @@ mod tests {
         }
 
         /// Record, install, render: the image ids the recording named.
-        fn frame(&mut self) -> alloc::vec::Vec<waterui_graphics::cherenkov::ImageId> {
+        fn frame(&mut self) -> alloc::vec::Vec<waterui_graphics::draw::ImageId> {
             use waterui_graphics::SceneContent as _;
-            use waterui_graphics::cherenkov::{Command, FrameTime};
+            use waterui_graphics::cherenkov::FrameTime;
+            use waterui_graphics::draw::Command;
 
             let mut resources = self.resources.recording();
             let mut recorded = self.surface.record(|recorder| {

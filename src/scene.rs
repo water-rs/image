@@ -18,11 +18,9 @@ use core::fmt;
 
 use num_traits::ToPrimitive;
 use waterui_core::layout::Size as LayoutSize;
-use waterui_graphics::cherenkov::kurbo::{Point, Rect, Size};
-use waterui_graphics::cherenkov::{
-    Draw as _, Image, ImageData, ImageId, Recorder, Rgba8, Sampling,
-};
-use waterui_graphics::{RecordingResources, Registered, SceneContent};
+use waterui_graphics::draw::kurbo::{Point, Rect, Size};
+use waterui_graphics::draw::{Draw as _, ImageId, Recorder, Sampling};
+use waterui_graphics::{ImageData, RecordingResources, Registered, Rgba8, SceneContent};
 use waterui_layout::ContentMode;
 
 /// Decoded straight-alpha sRGB8 pixels, shared between the view that owns them
@@ -192,7 +190,7 @@ pub struct ImageSceneContent {
     /// The live registration `pixels` uploaded as, minted lazily inside
     /// `build_scene`. `None` until the first frame, or permanently when the
     /// grid has no pixels to upload.
-    image: Option<Registered<Image<Rgba8>>>,
+    image: Option<Registered<ImageId>>,
 }
 
 impl ImageSceneContent {
@@ -263,8 +261,8 @@ mod tests {
     use super::{ImageSceneContent, LayoutSize, Pixels, destination, draw, overflows};
     use alloc::vec;
     use waterui_graphics::SceneContent as _;
-    use waterui_graphics::cherenkov::kurbo::{Rect, Size};
-    use waterui_graphics::cherenkov::{Command, Content, ImageId, Sampling};
+    use waterui_graphics::draw::kurbo::{Rect, Size};
+    use waterui_graphics::draw::{Command, Content, ImageId, Sampling};
     use waterui_layout::ContentMode;
 
     /// A 4:1 image in a square box: the two aspect ratios disagree, so every
@@ -317,20 +315,17 @@ mod tests {
     }
 
     fn record(pixels: (u32, u32), mode: Option<ContentMode>, width: f32, height: f32) -> Recorded {
-        let mut content = Content::record(
-            &waterui_graphics::cherenkov::LayoutSize::new(),
-            |recorder| {
-                draw(
-                    recorder,
-                    IMAGE,
-                    pixels,
-                    Sampling::Linear,
-                    mode,
-                    width,
-                    height,
-                );
-            },
-        );
+        let mut content = Content::record(&waterui_graphics::draw::LayoutSize::new(), |recorder| {
+            draw(
+                recorder,
+                IMAGE,
+                pixels,
+                Sampling::Linear,
+                mode,
+                width,
+                height,
+            );
+        });
         let mut recorded = Recorded {
             images: Vec::new(),
             clips: 0,
