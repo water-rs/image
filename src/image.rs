@@ -630,6 +630,14 @@ impl SceneContent for ReactiveImageSceneContent {
         false
     }
 
+    // The registration and the `uploaded` frame it was minted from belong to
+    // the old engine. The published frame stays in the shared `state` — the
+    // semantic source — so the next `build_scene` on the replacement engine
+    // registers and draws it like any other publish.
+    fn rebuild_for_engine(&mut self) {
+        self.release();
+    }
+
     /// The last published frame's pixel grid, and `None` before the first
     /// frame arrives: until then the view has no picture, and so no size of
     /// its own.

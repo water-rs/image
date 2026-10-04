@@ -246,6 +246,13 @@ impl SceneContent for ImageSceneContent {
         false
     }
 
+    // The `Registered` handle belongs to the engine that minted it; the
+    // replacement engine re-registers `pixels` on the next `build_scene`,
+    // which is where registrations live anyway.
+    fn rebuild_for_engine(&mut self) {
+        self.image = None;
+    }
+
     fn intrinsic_size(&self) -> Option<LayoutSize> {
         pixel_size(self.pixels.width, self.pixels.height)
     }
@@ -310,17 +317,20 @@ mod tests {
     }
 
     fn record(pixels: (u32, u32), mode: Option<ContentMode>, width: f32, height: f32) -> Recorded {
-        let mut content = Content::record(|recorder| {
-            draw(
-                recorder,
-                IMAGE,
-                pixels,
-                Sampling::Linear,
-                mode,
-                width,
-                height,
-            );
-        });
+        let mut content = Content::record(
+            &waterui_graphics::cherenkov::LayoutSize::new(),
+            |recorder| {
+                draw(
+                    recorder,
+                    IMAGE,
+                    pixels,
+                    Sampling::Linear,
+                    mode,
+                    width,
+                    height,
+                );
+            },
+        );
         let mut recorded = Recorded {
             images: Vec::new(),
             clips: 0,

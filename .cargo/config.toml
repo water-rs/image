@@ -1,0 +1,7 @@
+[env]
+# Cherenkov's native Apple contract requires OS 26 APIs; its `cherenkov-gpu`
+# build script validates the deployment target and fails the build below the
+# floor. Set here because a dependency's own cargo config does not reach this
+# workspace.
+MACOSX_DEPLOYMENT_TARGET = "26.0"
+IPHONEOS_DEPLOYMENT_TARGET = "26.0"
