@@ -814,7 +814,7 @@ mod tests {
                 Engine::<Gpu>::new(GpuConfig::default()).expect("the GPU engine failed to start"),
             );
             let surface = engine
-                .surface(Offscreen::new((64, 64), OffscreenFormat::LinearF16))
+                .surface(Offscreen::new((64, 64), OffscreenFormat::LinearF16), || {})
                 .expect("surface");
             let invalidations = Rc::new(Cell::new(0));
             let mut content = ReactiveImageSceneContent {
