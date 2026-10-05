@@ -80,12 +80,10 @@ waterui-image = { path = "." }
 block = { git = "https://github.com/Dicklesworthstone/rust-block", rev = "b39ae859d1ee8e8cb5eef6a516471f1578d26b96" }
 xcb = { git = "https://github.com/rust-x-bindings/rust-xcb", rev = "ae3b2cd080e78173223038ccbebdc644eaf4a9ad" }
 
-# nami#26 renamed `Signal::get` to `Signal::snapshot` — released as
-# `nami` 0.12 / `nami-core` 0.4, which the framework now requires — so both
-# nami crates this graph names ride the rev those releases were cut from,
-# and the whole graph carries one `Signal` trait.
-nami = { git = "https://github.com/water-rs/nami", rev = "1ffe641ad7e18d341a7cb6d8bcb326d76fb7cf03" }
-nami-core = { git = "https://github.com/water-rs/nami", rev = "1ffe641ad7e18d341a7cb6d8bcb326d76fb7cf03" }
+# suiteki 0.1.1 on crates.io implements nami-core 0.3's `Signal`; the pinned
+# rev implements nami-core 0.4's, keeping this graph on one `Signal` trait.
+# Drop once a release carries it.
+suiteki = { git = "https://github.com/water-rs/suiteki", rev = "7cf17bdba0e978d388a096b1916daebdc17253b4" }
 
 # The coordinated Cherenkov cutover (water-rs/hydrolysis#205), now in-tree:
 # the recording API, engine-owned resources, layers and GPU content moved
@@ -103,13 +101,9 @@ filtrate-core = { git = "https://github.com/water-rs/waterui", rev = "0676481864
 filtrate-derive = { git = "https://github.com/water-rs/waterui", rev = "0676481864f555271d43ef3b47cbf4407b990302" }
 
 # The framework head the port builds against: water-rs/waterui at
-# 06764818 — the water-rs/waterui#1924 head where `Engine::surface` takes
-# the surface's wake callback. The recording contract this port rides is
-# still the water-rs/waterui#1435 shape: `SceneContent::build_scene`
-# records into `cherenkov_record::Recorder`, re-exported as
-# `waterui_graphics::draw`, and `SceneResources::new` takes
-# the target's `SceneBackend`/`ShaderBackend` registry, its registrations
-# returning `Handle<I>` values naming the plain ids. Every `waterui-*`
+# 0676481, the water-rs/waterui#1924 head carrying the surface-wake
+# `Engine::surface` signature, the render-target-neutral recording contract
+# (water-rs/waterui#1435) and nami 0.12 from crates.io. Every `waterui-*`
 # crate in the graph must resolve to this one rev — a registry
 # `waterui-core` beside the facade's own path dependencies gives two `View`
 # traits in one graph.
@@ -141,8 +135,9 @@ waterui-testing = { git = "https://github.com/water-rs/waterui", rev = "06764818
 waterui-watcher-set = { git = "https://github.com/water-rs/waterui", rev = "0676481864f555271d43ef3b47cbf4407b990302" }
 waterui-webview = { git = "https://github.com/water-rs/waterui", rev = "0676481864f555271d43ef3b47cbf4407b990302" }
 
-# The extracted component crates the facade and the test graph name: each
-# rides the rev the framework's own patch table pins at 06764818.
+# The extracted component crates the facade and the test graph name, each at
+# the rev water-rs/waterui's own patch table pins; barcode, canvas, chart,
+# map-gpu, math and video-gpu are at the merges that moved them to nami 0.12.
 # `waterui-image` itself is the local crate, patched at the top of the table.
 waterui-math = { git = "https://github.com/water-rs/math", rev = "d780cf01082d6b24db12535ec6199a5dcbfc6ee5" }
 waterui-svg = { git = "https://github.com/water-rs/svg", rev = "16f99e021f735d0b1b31c95552b074e953d56418" }
@@ -189,7 +184,8 @@ shaderloom = { git = "https://github.com/water-rs/shaderloom", rev = "b0b6870c8b
 hydrolysis = { git = "https://github.com/water-rs/waterui", rev = "0676481864f555271d43ef3b47cbf4407b990302" }
 hydrolysis-m3 = { git = "https://github.com/water-rs/hydrolysis-m3", rev = "bc412a1a7e796cedc30d2c62d33fe293634574a8" }
 
-# Mirrored from water-rs/cherenkov's workspace [patch.crates-io] (cherenkov#229).
+# Mirrored from the water-rs/waterui workspace [patch.crates-io]
+# (water-rs/cherenkov#229).
 # wgpu 30.0.1's Metal backend reads the address of the kCGColorSpace* globals
 # instead of their value and crashes in CGColorSpaceCreateWithName whenever a
 # surface negotiates Extended Display P3 or BT.2100 (gfx-rs/wgpu#10175, fixed on
@@ -201,21 +197,7 @@ wgpu = { git = "https://github.com/water-rs/wgpu", rev = "4b35d8bc968f6968b3cbae
 wgpu-core = { git = "https://github.com/water-rs/wgpu", rev = "4b35d8bc968f6968b3cbae65b6e2e2ee132aa038" }
 wgpu-core-deps-apple = { git = "https://github.com/water-rs/wgpu", rev = "4b35d8bc968f6968b3cbae65b6e2e2ee132aa038" }
 wgpu-core-deps-emscripten = { git = "https://github.com/water-rs/wgpu", rev = "4b35d8bc968f6968b3cbae65b6e2e2ee132aa038" }
-wgpu-core-deps-wasm = { git = "https://github.com/water-rs/wgpu", rev = "4b35d8bc968f6968b3cbae65b6e2e2ee132aa038" }
 wgpu-core-deps-windows-linux-android = { git = "https://github.com/water-rs/wgpu", rev = "4b35d8bc968f6968b3cbae65b6e2e2ee132aa038" }
 wgpu-hal = { git = "https://github.com/water-rs/wgpu", rev = "4b35d8bc968f6968b3cbae65b6e2e2ee132aa038" }
 wgpu-naga-bridge = { git = "https://github.com/water-rs/wgpu", rev = "4b35d8bc968f6968b3cbae65b6e2e2ee132aa038" }
 wgpu-types = { git = "https://github.com/water-rs/wgpu", rev = "4b35d8bc968f6968b3cbae65b6e2e2ee132aa038" }
-
-# `suiteki` 0.1.1 on crates.io implements nami-core 0.3's `Signal`; the rev
-# the framework's own patch table pins implements 0.4's — the waterui
-# facade depends on it, so pin it here too or the graph carries two
-# `Signal` traits.
-suiteki = { git = "https://github.com/water-rs/suiteki", rev = "7cf17bdba0e978d388a096b1916daebdc17253b4" }
-
-# `hydrolysis-m3` declares `cherenkov` as a direct git dependency on the
-# cherenkov repository's old import rev, which a crates-io patch cannot
-# reach. Redirect that source to the in-tree package too, so the engine in
-# this graph is still a single source.
-[patch."https://github.com/water-rs/cherenkov"]
-cherenkov = { git = "https://github.com/water-rs/waterui", rev = "0676481864f555271d43ef3b47cbf4407b990302" }
