@@ -23,6 +23,7 @@ use alloc::borrow::ToOwned;
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::sync::Arc;
+use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 use core::fmt;
@@ -30,7 +31,9 @@ use core::fmt;
 use half::f16;
 use num_traits::ToPrimitive as _;
 use waterui_core::layout::Size as LayoutSize;
-use waterui_core::{Binding, Environment, Signal, SignalExt, View};
+use waterui_core::layout::{LayoutInvalidationCallback, Point, ProposalSize, Rect, StretchAxis};
+use waterui_core::reactive::watcher::BoxWatcherGuard;
+use waterui_core::{AnyView, Binding, Computed, Environment, Signal, SignalExt, View};
 #[cfg(feature = "gpu")]
 use waterui_graphics::cherenkov_gpu::Gpu;
 use waterui_graphics::color::linear_to_srgb;
@@ -38,10 +41,12 @@ use waterui_graphics::draw::{ImageId, Recorder, Sampling};
 #[cfg(feature = "gpu")]
 use waterui_graphics::{OffscreenError, OffscreenImage, OffscreenRenderer, OffscreenSize};
 use waterui_graphics::{RecordingResources, Registered, SceneContent, SceneInvalidator, SceneView};
-use waterui_layout::{ContentMode, frame::Frame};
+use waterui_layout::{
+    ContentMode, Layout, SubView, SubviewPlacement, container::FixedContainer, frame::Frame,
+};
 
 use crate::codec::{self, DecodedRgba};
-use crate::scene::{ImageSceneContent, Pixels, pixel_size, u32_to_f32};
+use crate::scene::{ImageSceneContent, Pixels, pixel_size};
 
 pub use crate::codec::DecodePath;
 
@@ -69,7 +74,7 @@ pub struct Image {
     /// How the engine samples between texels.
     sampling: Sampling,
     /// When `true`, the image takes the box its parent proposes instead of
-    /// locking to its native pixel size like a `SwiftUI` `Image` (the default).
+    /// keeping its natural size and only scaling down (the default).
     resizable: bool,
     /// Aspect handling inside that box. `None` stretches each axis
     /// independently, which is what `.resizable()` alone means.
@@ -240,14 +245,14 @@ impl Image {
         self
     }
 
-    /// Allows this image to stretch to its proposed bounds instead of
-    /// locking to its native pixel size.
+    /// Allows this image to fill its proposed bounds instead of only scaling down.
     ///
-    /// Mirrors `SwiftUI`'s `Image.resizable()`. The default behaviour
-    /// frames the image to its source `width × height` so a 64-pixel
-    /// asset stays 64 pixels tall regardless of the parent's proposal;
-    /// once `.resizable()` is applied the image fills whatever the
-    /// parent gives it, distorting the aspect ratio unless
+    /// By default, an unspecified proposal receives the natural pixel size.
+    /// A smaller finite proposal scales the image down, preserving its aspect
+    /// ratio; a larger proposal never scales it up. The image claims no leftover
+    /// space. Unlike a non-resizable `SwiftUI` image, it fits a smaller offer.
+    /// Once `.resizable()` is applied the image fills whatever the parent gives
+    /// it, distorting the aspect ratio unless
     /// [`Image::content_mode`] says otherwise.
     #[must_use]
     pub const fn resizable(mut self) -> Self {
@@ -264,7 +269,7 @@ impl Image {
     /// stretches each axis independently.
     ///
     /// Only meaningful together with [`Image::resizable`]: a non-resizable
-    /// image is framed to its own pixel size, where every mode agrees.
+    /// image always preserves its aspect ratio and only scales down.
     #[must_use]
     pub const fn content_mode(mut self, mode: ContentMode) -> Self {
         self.content_mode = Some(mode);
@@ -385,15 +390,75 @@ impl Image {
 
 impl View for Image {
     fn body(self, _env: &Environment) -> impl View {
-        let width = u32_to_f32(self.width());
-        let height = u32_to_f32(self.height());
+        let dimensions = Computed::constant(Some(self.dimensions()));
         let resizable = self.resizable;
-        let frame = Frame::new(SceneView::new(self.into_scene_content()));
+        let scene = SceneView::new(self.into_scene_content());
         if resizable {
-            frame
+            AnyView::new(Frame::new(scene))
         } else {
-            frame.width(width).height(height)
+            AnyView::new(FixedContainer::new(ImageLayout { dimensions }, (scene,)))
         }
+    }
+}
+
+#[derive(Debug)]
+struct ImageLayout {
+    dimensions: Computed<Option<(u32, u32)>>,
+}
+
+impl ImageLayout {
+    fn resolve(&self, proposal: ProposalSize) -> LayoutSize {
+        let Some(natural) = self
+            .dimensions
+            .snapshot()
+            .and_then(|(width, height)| pixel_size(width, height))
+        else {
+            return LayoutSize::zero();
+        };
+        let width_scale = proposal
+            .width
+            .filter(|width| width.is_finite())
+            .map_or(1.0, |width| width / natural.width);
+        let height_scale = proposal
+            .height
+            .filter(|height| height.is_finite())
+            .map_or(1.0, |height| height / natural.height);
+        let scale = width_scale.min(height_scale).clamp(0.0, 1.0);
+        LayoutSize::new(natural.width * scale, natural.height * scale)
+    }
+}
+
+impl Layout for ImageLayout {
+    fn size_that_fits(&self, proposal: ProposalSize, _children: &[&dyn SubView]) -> LayoutSize {
+        self.resolve(proposal)
+    }
+
+    fn place(
+        &self,
+        bounds: Rect,
+        _proposal: ProposalSize,
+        children: &[&dyn SubView],
+    ) -> Vec<SubviewPlacement> {
+        if children.is_empty() {
+            return vec![];
+        }
+        let size = self.resolve(ProposalSize::new(bounds.width(), bounds.height()));
+        let origin = Point::new(
+            (bounds.width() - size.width).mul_add(0.5, bounds.x()),
+            (bounds.height() - size.height).mul_add(0.5, bounds.y()),
+        );
+        vec![SubviewPlacement::new(
+            Rect::new(origin, size),
+            ProposalSize::new(size.width, size.height),
+        )]
+    }
+
+    fn stretch_axis(&self, _children: &[StretchAxis]) -> StretchAxis {
+        StretchAxis::None
+    }
+
+    fn watch_invalidation(&self, invalidate: LayoutInvalidationCallback) -> Vec<BoxWatcherGuard> {
+        vec![self.dimensions.watch(move |_| invalidate())]
     }
 }
 
@@ -403,7 +468,7 @@ struct ReactiveImageState {
     /// while there is nothing to draw. `build_scene` draws from it.
     frame: RefCell<Option<(Pixels, Sampling)>>,
     /// The displayed frame's pixel dimensions, as a binding the view's
-    /// frame modifiers read so a size change re-lays out without a rebuild.
+    /// layout reads so a size change re-lays out without a rebuild.
     dimensions: Binding<Option<(u32, u32)>>,
     /// The invalidator the mounted content registered, so `publish` can ask
     /// for the frame that re-records the new frame's placement.
@@ -480,6 +545,9 @@ pub struct ReactiveImage {
 
 impl ReactiveImage {
     /// Allows this image to stretch to its proposed bounds.
+    ///
+    /// Otherwise it keeps its natural size and only scales down, preserving its
+    /// aspect ratio and claiming no leftover space. See [`Image::resizable`].
     #[must_use]
     pub const fn resizable(mut self) -> Self {
         self.resizable = true;
@@ -498,26 +566,17 @@ impl ReactiveImage {
 
 impl View for ReactiveImage {
     fn body(self, _env: &Environment) -> impl View {
-        let width = self
-            .state
-            .dimensions
-            .map(|dimensions| dimensions.map_or(0.0, |(width, _)| u32_to_f32(width)))
-            .computed();
-        let height = self
-            .state
-            .dimensions
-            .map(|dimensions| dimensions.map_or(0.0, |(_, height)| u32_to_f32(height)))
-            .computed();
-        let frame = Frame::new(SceneView::new(ReactiveImageSceneContent {
+        let dimensions = self.state.dimensions.clone().computed();
+        let scene = SceneView::new(ReactiveImageSceneContent {
             state: Rc::clone(&self.state),
             content_mode: self.content_mode,
             image: None,
             uploaded: None,
-        }));
+        });
         if self.resizable {
-            frame
+            AnyView::new(Frame::new(scene))
         } else {
-            frame.width(width).height(height)
+            AnyView::new(FixedContainer::new(ImageLayout { dimensions }, (scene,)))
         }
     }
 }
