@@ -4900,12 +4900,15 @@ dependencies = [
 name = "waterui-image"
 version = "0.5.0"
 dependencies = [
+ "executor-core",
  "half",
  "hydrolysis-m3",
  "image",
  "mp4-atom",
  "num-traits",
  "pollster 1.0.1",
+ "thiserror 2.0.21",
+ "tracing",
  "waterkit-codec",
  "waterui",
  "waterui-core",

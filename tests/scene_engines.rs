@@ -21,8 +21,8 @@ use std::path::Path;
 
 use image::ImageEncoder as _;
 use waterui_graphics::cherenkov_gpu::Gpu;
-use waterui_graphics::{OffscreenImage, OffscreenRenderer, OffscreenSize};
-use waterui_image::{ContentMode, Image};
+use waterui_graphics::{OffscreenImage, OffscreenRenderer, OffscreenSize, ResourceError};
+use waterui_image::{ContentMode, Image, RenderOffscreenError};
 
 /// Source width. Four times the height, so no mode agrees with any other in a
 /// square box.
@@ -85,12 +85,14 @@ fn source_png() -> Vec<u8> {
 /// the image in it; `.resizable()` belongs to the layout wrapper a view body
 /// builds and has nothing to say about a surface of a fixed size.
 fn render(image: Image) -> OffscreenImage {
+    try_render(image).expect("offscreen render should succeed")
+}
+
+fn try_render(image: Image) -> Result<OffscreenImage, RenderOffscreenError> {
     let renderer =
         OffscreenRenderer::<Gpu>::new().expect("scene image export requires a working GPU");
     let size = OffscreenSize::try_from_pixels(BOX_SIDE, BOX_SIDE).expect("test size must be valid");
-    image
-        .render_offscreen(&renderer, size, 1.0)
-        .expect("offscreen render should succeed")
+    image.render_offscreen(&renderer, size, 1.0)
 }
 
 fn save(output: &OffscreenImage, name: &str) {
@@ -155,5 +157,29 @@ fn fill_covers_the_box_and_clips_what_hangs_off_it() {
     assert!(
         !output.rgba8.as_chunks::<4>().0.contains(&MAGENTA),
         "the clip must keep the overflowing corner marker out of the box"
+    );
+}
+
+/// An image wider than any GPU's largest texture is refused by the engine at
+/// registration: rendering it reports that refusal instead of panicking or
+/// handing back a frame with nothing in it.
+#[test]
+fn an_image_the_engine_refuses_is_an_error_not_a_blank_frame() {
+    const WIDTH: u32 = 1 << 17;
+    let image = Image::new(vec![255; WIDTH as usize * 4], WIDTH, 1);
+    let error = try_render(image).expect_err("an image past the texture limit must be refused");
+    let RenderOffscreenError::Rejected(error) = error else {
+        panic!("expected the engine's refusal, got {error}");
+    };
+    assert!(
+        matches!(
+            error.resource_error(),
+            ResourceError::TooLarge {
+                width: WIDTH,
+                height: 1,
+                ..
+            }
+        ),
+        "{error}"
     );
 }

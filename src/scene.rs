@@ -8,6 +8,13 @@
 //! [`Registered`] handle stays with the content for as long as its
 //! recordings name the image.
 //!
+//! The engine may refuse a registration — an image beyond its
+//! [`ImageLimits`](waterui_graphics::draw::ImageLimits), or one its image
+//! budget cannot take beside the images already registered. A refused image
+//! draws nothing, is not offered to the same engine again, and is reported:
+//! through `tracing`, and as a [`RegistrationError`] on the failure signal of
+//! the view that owns it.
+//!
 //! Nothing here knows which backend is listening: the same commands render on
 //! `cherenkov-gpu`, on the CPU rasterizer, and in a backend that merges them
 //! into a scene of its own.
@@ -18,10 +25,95 @@ use core::fmt;
 
 use num_traits::ToPrimitive;
 use waterui_core::layout::Size as LayoutSize;
+use waterui_core::{Binding, Signal as _};
 use waterui_graphics::draw::kurbo::{Point, Rect, Size};
 use waterui_graphics::draw::{Draw as _, ImageId, Recorder, Sampling};
-use waterui_graphics::{ImageData, RecordingResources, Registered, Rgba8, SceneContent};
+use waterui_graphics::{
+    ImageData, RecordingResources, Registered, ResourceError, Rgba8, SceneContent,
+};
 use waterui_layout::ContentMode;
+
+/// The scene backend refused to register an image's pixels.
+///
+/// An image whose registration is refused draws nothing. The usual causes are
+/// an image larger than the backend's image limits and one its image budget
+/// cannot hold beside the images already registered; [`Self::resource_error`]
+/// says which.
+///
+/// Cheap to clone: every clone shares the one backend error.
+#[derive(Debug, Clone)]
+pub struct RegistrationError(Arc<ResourceError>);
+
+impl RegistrationError {
+    /// The error the scene backend refused the registration with.
+    #[must_use]
+    pub fn resource_error(&self) -> &ResourceError {
+        &self.0
+    }
+}
+
+impl fmt::Display for RegistrationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "the scene backend rejected the image: {}",
+            self.0
+        )
+    }
+}
+
+impl core::error::Error for RegistrationError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        Some(&*self.0)
+    }
+}
+
+/// What registering one pixel grid with an engine came to: the live
+/// registration to draw, or the refusal that leaves the image blank.
+pub type Registration = Result<Registered<ImageId>, RegistrationError>;
+
+/// Registers `data` with the recording's engine, reporting a refusal
+/// through `tracing`.
+pub fn register(data: ImageData<Rgba8>, resources: &RecordingResources<'_>) -> Registration {
+    let (width, height) = (data.width(), data.height());
+    resources.image(data).map_err(|error| {
+        tracing::error!(
+            width,
+            height,
+            %error,
+            "the scene backend rejected an image registration; the image draws nothing"
+        );
+        RegistrationError(Arc::new(error))
+    })
+}
+
+/// Brings a view's failure state in line with `outcome` — the refusal of the
+/// pixels it displays, or `None` when they are registered — once the
+/// recording pass that settled it is over.
+///
+/// `build_scene` runs inside the host's recording pass, with the content
+/// borrowed; a watcher of the failure state is application code, so the
+/// change is made from the main-thread executor instead of inside that
+/// borrow. `current` is asked again when the task runs, and an outcome the
+/// view has moved past by then — a different frame was published meanwhile —
+/// is dropped. Nothing is sent while the state already agrees.
+pub fn report(
+    failure: &Binding<Option<RegistrationError>>,
+    outcome: Option<&RegistrationError>,
+    current: impl FnOnce() -> bool + 'static,
+) {
+    if failure.snapshot().is_some() == outcome.is_some() {
+        return;
+    }
+    let failure = failure.clone();
+    let outcome = outcome.cloned();
+    executor_core::spawn_local(async move {
+        if current() {
+            failure.set(outcome);
+        }
+    })
+    .detach();
+}
 
 /// Decoded straight-alpha sRGB8 pixels, shared between the view that owns them
 /// and the mounts that upload them.
@@ -63,6 +155,14 @@ impl Pixels {
     /// pixels draws nothing.
     pub(crate) fn upload(&self) -> Option<ImageData<Rgba8>> {
         ImageData::new(self.width, self.height, Arc::clone(&self.data)).ok()
+    }
+
+    /// Whether `other` is this very grid — the same allocation at the same
+    /// size — rather than merely equal pixels.
+    pub(crate) fn is(&self, other: &Self) -> bool {
+        self.width == other.width
+            && self.height == other.height
+            && Arc::ptr_eq(&self.data, &other.data)
     }
 }
 
@@ -183,24 +283,44 @@ pub fn draw(
 /// frame that first names its `ImageId`, as the registration contract asks —
 /// and the [`Registered`] handle is what every later recording keeps naming.
 /// The upload lives exactly as long as the content holds the handle.
+///
+/// A refused upload is settled the same way: the content keeps the
+/// [`RegistrationError`], draws nothing, and does not offer the grid to that
+/// engine again.
 pub struct ImageSceneContent {
     pixels: Pixels,
     sampling: Sampling,
     mode: Option<ContentMode>,
-    /// The live registration `pixels` uploaded as, minted lazily inside
-    /// `build_scene`. `None` until the first frame, or permanently when the
-    /// grid has no pixels to upload.
-    image: Option<Registered<ImageId>>,
+    /// What the engine made of `pixels`, settled inside the first
+    /// `build_scene`. `None` until that frame, or permanently when the grid
+    /// has no pixels to upload.
+    registration: Option<Registration>,
+    /// The view's failure state, which this content reports its
+    /// registration's outcome into. `None` for content rendered on its own,
+    /// whose caller reads [`Self::rejection`] instead.
+    failure: Option<Binding<Option<RegistrationError>>>,
 }
 
 impl ImageSceneContent {
-    pub const fn new(pixels: Pixels, sampling: Sampling, mode: Option<ContentMode>) -> Self {
+    pub const fn new(
+        pixels: Pixels,
+        sampling: Sampling,
+        mode: Option<ContentMode>,
+        failure: Option<Binding<Option<RegistrationError>>>,
+    ) -> Self {
         Self {
             pixels,
             sampling,
             mode,
-            image: None,
+            registration: None,
+            failure,
         }
+    }
+
+    /// The engine's refusal of this content's pixels, once a `build_scene`
+    /// has offered them and been refused.
+    pub fn rejection(&self) -> Option<&RegistrationError> {
+        self.registration.as_ref()?.as_ref().err()
     }
 }
 
@@ -211,7 +331,7 @@ impl fmt::Debug for ImageSceneContent {
             .field("width", &self.pixels.width)
             .field("height", &self.pixels.height)
             .field("mode", &self.mode)
-            .field("registered", &self.image.is_some())
+            .field("registration", &self.registration)
             .finish_non_exhaustive()
     }
 }
@@ -224,35 +344,147 @@ impl SceneContent for ImageSceneContent {
         width: f32,
         height: f32,
     ) -> bool {
-        if let Some(data) = self.pixels.upload() {
-            let image = self.image.get_or_insert_with(|| {
-                resources
-                    .image(data)
-                    .unwrap_or_else(|error| panic!("image upload rejected by the engine: {error}"))
-            });
-            let id = resources.name(image);
-            draw(
-                recorder,
-                id,
-                (self.pixels.width, self.pixels.height),
-                self.sampling,
-                self.mode,
-                width,
-                height,
-            );
+        if self.registration.is_none() {
+            let Some(data) = self.pixels.upload() else {
+                return false;
+            };
+            let registration = register(data, resources);
+            if let Some(failure) = &self.failure {
+                report(failure, registration.as_ref().err(), || true);
+            }
+            self.registration = Some(registration);
         }
+        let Some(Ok(image)) = &self.registration else {
+            return false;
+        };
+        let id = resources.name(image);
+        draw(
+            recorder,
+            id,
+            (self.pixels.width, self.pixels.height),
+            self.sampling,
+            self.mode,
+            width,
+            height,
+        );
         false
     }
 
-    // The `Registered` handle belongs to the engine that minted it; the
-    // replacement engine re-registers `pixels` on the next `build_scene`,
-    // which is where registrations live anyway.
+    // The registration belongs to the engine that settled it, and so does a
+    // refusal: the replacement engine offers `pixels` again on the next
+    // `build_scene`, which is where registrations live anyway.
     fn rebuild_for_engine(&mut self) {
-        self.image = None;
+        self.registration = None;
     }
 
     fn intrinsic_size(&self) -> Option<LayoutSize> {
         pixel_size(self.pixels.width, self.pixels.height)
+    }
+}
+
+#[cfg(test)]
+pub mod test_backend {
+    //! A scene backend whose image budget a test sets, and a frame driver
+    //! over it, so a refused registration is reproducible without a GPU.
+
+    use alloc::format;
+    use alloc::rc::Rc;
+    use alloc::vec::Vec;
+    use core::cell::Cell;
+
+    use waterui_graphics::draw::{Command, Content, FontId, ImageId, ImageLimits, LayoutSize};
+    use waterui_graphics::{
+        FontSource, Handle, ImageData, ResourceError, ResourceHandle, Rgba8, Rgba16F, SceneBackend,
+        SceneContent, SceneResources,
+    };
+
+    /// A texture the test backend handed out.
+    struct Texture(ImageId);
+
+    impl ResourceHandle for Texture {
+        type Id = ImageId;
+
+        fn id(&self) -> ImageId {
+            self.0
+        }
+    }
+
+    /// A backend that admits every size but holds at most `capacity` texels in
+    /// all, refusing a registration the remaining budget cannot take — the
+    /// way an engine refuses an image that fits its limits alone but not
+    /// beside the images already registered.
+    pub struct Budget {
+        capacity: u64,
+        /// Texels registered so far. Registrations are never released here:
+        /// a test's images live for the whole test.
+        used: Cell<u64>,
+        /// Every registration that reached the backend, accepted or not.
+        pub attempts: Cell<u32>,
+    }
+
+    impl Budget {
+        pub fn new(capacity: u64) -> Rc<Self> {
+            Rc::new(Self {
+                capacity,
+                used: Cell::new(0),
+                attempts: Cell::new(0),
+            })
+        }
+
+        fn admit(&self, width: u32, height: u32) -> Result<Handle<ImageId>, ResourceError> {
+            self.attempts.set(self.attempts.get() + 1);
+            let texels = u64::from(width) * u64::from(height);
+            let used = self.used.get() + texels;
+            if used > self.capacity {
+                return Err(ResourceError::Image(format!(
+                    "{width}x{height} does not fit the remaining image budget"
+                )));
+            }
+            self.used.set(used);
+            Ok(Handle::new(Texture(ImageId::new(u64::from(
+                self.attempts.get(),
+            )))))
+        }
+    }
+
+    impl SceneBackend for Budget {
+        fn register_font(&self, _source: FontSource) -> Result<Handle<FontId>, ResourceError> {
+            Err(ResourceError::Unsupported("fonts"))
+        }
+
+        fn register_rgba8(&self, data: ImageData<Rgba8>) -> Result<Handle<ImageId>, ResourceError> {
+            self.admit(data.width(), data.height())
+        }
+
+        fn register_rgba16f(
+            &self,
+            data: ImageData<Rgba16F>,
+        ) -> Result<Handle<ImageId>, ResourceError> {
+            self.admit(data.width(), data.height())
+        }
+
+        fn image_limits(&self) -> ImageLimits {
+            ImageLimits::UNLIMITED
+        }
+    }
+
+    /// Records one frame of `content` against `resources`: the image ids the
+    /// recording names.
+    pub fn frame(content: &mut impl SceneContent, resources: &SceneResources) -> Vec<ImageId> {
+        let mut recording = resources.recording();
+        let mut recorded = Content::record(&LayoutSize::new(), |recorder| {
+            content.build_scene(recorder, &mut recording, 8.0, 8.0);
+        });
+        let _held = recording.finish();
+        recorded
+            .snapshot()
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                Command::Image { image, .. } => Some(*image),
+                _ => None,
+            })
+            .collect()
     }
 }
 
@@ -376,7 +608,7 @@ mod tests {
     fn an_image_is_its_pixel_grid() {
         for mode in [None, Some(ContentMode::Fit), Some(ContentMode::Fill)] {
             let pixels = Pixels::new(vec![255; 80 * 20 * 4], 80, 20);
-            let content = ImageSceneContent::new(pixels, Sampling::Linear, mode);
+            let content = ImageSceneContent::new(pixels, Sampling::Linear, mode, None);
             assert_eq!(content.intrinsic_size(), Some(LayoutSize::new(80.0, 20.0)));
         }
     }
@@ -385,12 +617,12 @@ mod tests {
     #[test]
     fn an_empty_image_has_no_size() {
         assert_eq!(
-            ImageSceneContent::new(Pixels::new(vec![], 0, 0), Sampling::Linear, None)
+            ImageSceneContent::new(Pixels::new(vec![], 0, 0), Sampling::Linear, None, None)
                 .intrinsic_size(),
             None
         );
         assert_eq!(
-            ImageSceneContent::new(Pixels::new(vec![], 80, 0), Sampling::Linear, None)
+            ImageSceneContent::new(Pixels::new(vec![], 80, 0), Sampling::Linear, None, None)
                 .intrinsic_size(),
             None
         );

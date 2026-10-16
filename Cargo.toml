@@ -51,6 +51,11 @@ half = { version = "2.7", default-features = false }
 num-traits = { version = "0.2", default-features = false }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico", "tiff"] }
 mp4-atom = "0.14.0"
+# The main-thread executor every host installs: a registration outcome is
+# delivered to a view's failure state from it, outside the recording pass.
+executor-core = "0.7.1"
+thiserror = "2.0"
+tracing = "0.1"
 
 # The AV1 software decoder (rav1d and its colour pipeline) is linked only where
 # no platform still-image decoder exists: Android (BitmapFactory), Apple
