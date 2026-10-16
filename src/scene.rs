@@ -12,8 +12,8 @@
 //! [`ImageLimits`](waterui_graphics::draw::ImageLimits), or one its image
 //! budget cannot take beside the images already registered. A refused image
 //! draws nothing, is not offered to the same engine again, and is reported:
-//! through `tracing`, and as a [`RegistrationError`] on the failure signal of
-//! the view that owns it.
+//! through `tracing`, and as [`RegistrationState::Refused`] on the
+//! registration state of the view that owns it.
 //!
 //! Nothing here knows which backend is listening: the same commands render on
 //! `cherenkov-gpu`, on the CPU rasterizer, and in a backend that merges them
@@ -72,6 +72,26 @@ impl core::error::Error for RegistrationError {
 /// registration to draw, or the refusal that leaves the image blank.
 pub type Registration = Result<Registered<ImageId>, RegistrationError>;
 
+/// How the registration of the frame an image view displays stands.
+///
+/// A view starts at [`Pending`](Self::Pending); each recording pass that
+/// registers or refuses the published frame settles it, and publishing a
+/// different frame — or clearing it — returns it to `Pending`. The state
+/// changes from the main-thread executor after the recording pass that
+/// settled it, never from inside rendering; see [`report`].
+#[derive(Debug, Clone)]
+pub enum RegistrationState {
+    /// No recording pass has settled the current frame's registration yet.
+    Pending,
+    /// The scene backend registered the current frame's pixels; the image
+    /// is on screen.
+    Registered,
+    /// The scene backend refused the current frame's pixels — they exceed
+    /// its image limits, or its image budget cannot hold them beside the
+    /// images already registered. The image draws nothing.
+    Refused(RegistrationError),
+}
+
 /// Registers `data` with the recording's engine, reporting a refusal
 /// through `tracing`.
 pub fn register(data: ImageData<Rgba8>, resources: &RecordingResources<'_>) -> Registration {
@@ -87,29 +107,33 @@ pub fn register(data: ImageData<Rgba8>, resources: &RecordingResources<'_>) -> R
     })
 }
 
-/// Brings a view's failure state in line with `outcome` — the refusal of the
-/// pixels it displays, or `None` when they are registered — once the
-/// recording pass that settled it is over.
+/// Brings a view's registration state in line with `outcome` —
+/// [`Refused`](RegistrationState::Refused) on a refusal of the pixels it
+/// displays, [`Registered`](RegistrationState::Registered) when they
+/// registered — once the recording pass that settled it is over.
 ///
 /// `build_scene` runs inside the host's recording pass, with the content
-/// borrowed; a watcher of the failure state is application code, so the
+/// borrowed; a watcher of the registration state is application code, so the
 /// change is made from the main-thread executor instead of inside that
 /// borrow. `current` is asked again when the task runs, and an outcome the
 /// view has moved past by then — a different frame was published meanwhile —
-/// is dropped. Nothing is sent while the state already agrees.
+/// is dropped. Nothing is sent while the state already holds the outcome's
+/// variant.
 pub fn report(
-    failure: &Binding<Option<RegistrationError>>,
+    registration: &Binding<RegistrationState>,
     outcome: Option<&RegistrationError>,
     current: impl FnOnce() -> bool + 'static,
 ) {
-    if failure.snapshot().is_some() == outcome.is_some() {
+    let settled = outcome.map_or(RegistrationState::Registered, |error| {
+        RegistrationState::Refused(error.clone())
+    });
+    if core::mem::discriminant(&registration.snapshot()) == core::mem::discriminant(&settled) {
         return;
     }
-    let failure = failure.clone();
-    let outcome = outcome.cloned();
+    let registration = registration.clone();
     executor_core::spawn_local(async move {
         if current() {
-            failure.set(outcome);
+            registration.set(settled);
         }
     })
     .detach();
@@ -295,10 +319,10 @@ pub struct ImageSceneContent {
     /// `build_scene`. `None` until that frame, or permanently when the grid
     /// has no pixels to upload.
     registration: Option<Registration>,
-    /// The view's failure state, which this content reports its
+    /// The view's registration state, which this content reports its
     /// registration's outcome into. `None` for content rendered on its own,
     /// whose caller reads [`Self::rejection`] instead.
-    failure: Option<Binding<Option<RegistrationError>>>,
+    state: Option<Binding<RegistrationState>>,
 }
 
 impl ImageSceneContent {
@@ -306,14 +330,14 @@ impl ImageSceneContent {
         pixels: Pixels,
         sampling: Sampling,
         mode: Option<ContentMode>,
-        failure: Option<Binding<Option<RegistrationError>>>,
+        state: Option<Binding<RegistrationState>>,
     ) -> Self {
         Self {
             pixels,
             sampling,
             mode,
             registration: None,
-            failure,
+            state,
         }
     }
 
@@ -349,8 +373,8 @@ impl SceneContent for ImageSceneContent {
                 return false;
             };
             let registration = register(data, resources);
-            if let Some(failure) = &self.failure {
-                report(failure, registration.as_ref().err(), || true);
+            if let Some(state) = &self.state {
+                report(state, registration.as_ref().err(), || true);
             }
             self.registration = Some(registration);
         }

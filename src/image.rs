@@ -9,9 +9,9 @@
 //!
 //! The engine can refuse the pixels — an image beyond its image limits, or
 //! one its image budget cannot hold beside the images already registered. A
-//! refused image draws nothing and reports the refusal on its failure signal:
-//! [`Image::failure`] for a static image, [`ReactiveImageHandle::failure`]
-//! for a reactive one.
+//! refused image draws nothing and reports the refusal on its registration
+//! state: [`Image::registration`] for a static image,
+//! [`ReactiveImageHandle::registration`] for a reactive one.
 //!
 //! # Example
 //!
@@ -52,7 +52,8 @@ use waterui_layout::{
 
 use crate::codec::{self, DecodedRgba};
 use crate::scene::{
-    ImageSceneContent, Pixels, Registration, RegistrationError, pixel_size, register, report,
+    ImageSceneContent, Pixels, Registration, RegistrationError, RegistrationState, pixel_size,
+    register, report,
 };
 
 pub use crate::codec::DecodePath;
@@ -65,7 +66,7 @@ pub use crate::codec::DecodePath;
 /// [`Image::content_mode`].
 ///
 /// The engine may refuse to register the pixels; the image then draws nothing
-/// and [`Image::failure`] reports why.
+/// and [`Image::registration`] reports the refusal.
 ///
 /// # Example
 ///
@@ -89,9 +90,9 @@ pub struct Image {
     /// Aspect handling inside that box. `None` stretches each axis
     /// independently, which is what `.resizable()` alone means.
     content_mode: Option<ContentMode>,
-    /// Whether the engine refused the pixels, shared by every clone and
-    /// written by every mount; see [`Image::failure`].
-    failure: Binding<Option<RegistrationError>>,
+    /// How the engine's registration of the pixels stands, shared by every
+    /// clone and written by every mount; see [`Image::registration`].
+    registration: Binding<RegistrationState>,
 }
 
 /// Why [`Image::render_offscreen`] produced no frame.
@@ -257,26 +258,28 @@ impl Image {
             sampling: Interpolation::default().to_sampling(),
             resizable: false,
             content_mode: None,
-            failure: Binding::container(None),
+            registration: Binding::container(RegistrationState::Pending),
         }
     }
 
-    /// Whether the engine refused to register this image's pixels.
+    /// How the registration of this image's pixels with the engine stands.
     ///
-    /// `None` while the image draws, or before it has been drawn at all;
-    /// `Some` once the scene backend refused the pixels — they exceed its
-    /// image limits, or its image budget cannot hold them beside the images
-    /// already registered. A refused image draws nothing, takes the layout
-    /// space its pixel grid asks for, and is not offered to the same engine
-    /// again; the refusal is also logged through `tracing`.
+    /// [`RegistrationState::Pending`] until a drawn frame's recording pass
+    /// settles it, then [`RegistrationState::Registered`] — the pixels are on
+    /// screen — or [`RegistrationState::Refused`] with the
+    /// [`RegistrationError`] the scene backend rejected them with: they
+    /// exceed its image limits, or its image budget cannot hold them beside
+    /// the images already registered. A refused image draws nothing, takes
+    /// the layout space its pixel grid asks for, and is not offered to the
+    /// same engine again; the refusal is also logged through `tracing`.
     ///
     /// The value changes from the main-thread executor after the frame that
     /// attempted the registration, never from inside rendering. Clones of an
-    /// image share the one failure state, and each of their mounts reports
-    /// into it: the latest registration outcome is the one it holds.
+    /// image share the one registration state, and each of their mounts
+    /// reports into it: the latest registration outcome is the one it holds.
     #[must_use]
-    pub fn failure(&self) -> Computed<Option<RegistrationError>> {
-        self.failure.clone().computed()
+    pub fn registration(&self) -> Computed<RegistrationState> {
+        self.registration.clone().computed()
     }
 
     /// Sets the sampling mode for this image.
@@ -447,12 +450,9 @@ impl Image {
     }
 
     /// The scene content that draws this image, dropping the layout wrapper.
-    /// `failure` is the state it reports its registration's outcome into.
-    fn into_scene_content(
-        self,
-        failure: Option<Binding<Option<RegistrationError>>>,
-    ) -> ImageSceneContent {
-        ImageSceneContent::new(self.pixels, self.sampling, self.content_mode, failure)
+    /// `state` is the registration state it reports its outcome into.
+    fn into_scene_content(self, state: Option<Binding<RegistrationState>>) -> ImageSceneContent {
+        ImageSceneContent::new(self.pixels, self.sampling, self.content_mode, state)
     }
 }
 
@@ -460,8 +460,8 @@ impl View for Image {
     fn body(self, _env: &Environment) -> impl View {
         let dimensions = Computed::constant(Some(self.dimensions()));
         let resizable = self.resizable;
-        let failure = self.failure.clone();
-        let scene = SceneView::new(self.into_scene_content(Some(failure)));
+        let registration = self.registration.clone();
+        let scene = SceneView::new(self.into_scene_content(Some(registration)));
         if resizable {
             AnyView::new(Frame::new(scene))
         } else {
@@ -542,9 +542,9 @@ struct ReactiveImageState {
     /// The invalidator the mounted content registered, so `publish` can ask
     /// for the frame that re-records the new frame's placement.
     invalidator: RefCell<Option<SceneInvalidator>>,
-    /// Whether the engine refused the published frame; see
-    /// [`ReactiveImageHandle::failure`].
-    failure: Binding<Option<RegistrationError>>,
+    /// How the engine's registration of the published frame stands; see
+    /// [`ReactiveImageHandle::registration`].
+    registration: Binding<RegistrationState>,
 }
 
 impl fmt::Debug for ReactiveImageState {
@@ -553,7 +553,7 @@ impl fmt::Debug for ReactiveImageState {
             .debug_struct("ReactiveImageState")
             .field("dimensions", &self.dimensions.snapshot())
             .field("published", &self.frame.borrow().is_some())
-            .field("failed", &self.failure.snapshot().is_some())
+            .field("registration", &self.registration.snapshot())
             .finish_non_exhaustive()
     }
 }
@@ -570,9 +570,9 @@ impl ReactiveImageState {
     /// installed keeps drawing the pixels it was recorded with until that
     /// replacement lands, so no frame ever samples a partly written image.
     ///
-    /// A different frame starts with no failure: whatever the engine said
-    /// about the previous one does not describe it. Republishing the frame
-    /// on display keeps its failure, since its registration stands.
+    /// A different frame starts pending: whatever the engine said about the
+    /// previous one does not describe it. Republishing the frame on display
+    /// keeps its settlement, since its registration stands.
     fn publish(state: &Rc<Self>, frame: Option<(Pixels, Sampling)>) {
         state.dimensions.set(
             frame
@@ -580,7 +580,7 @@ impl ReactiveImageState {
                 .map(|(pixels, _)| (pixels.width, pixels.height)),
         );
         if !state.displays(frame.as_ref().map(|(pixels, _)| pixels)) {
-            state.failure.set(None);
+            state.registration.set(RegistrationState::Pending);
         }
         *state.frame.borrow_mut() = frame;
         if let Some(invalidator) = state.invalidator.borrow().as_ref() {
@@ -618,22 +618,25 @@ impl ReactiveImageHandle {
         ReactiveImageState::publish(&self.state, None);
     }
 
-    /// Whether the engine refused to register the published frame.
+    /// How the registration of the published frame stands.
     ///
-    /// `None` while the frame draws, before it has been drawn, and while no
-    /// frame is published; `Some` once the scene backend refused the frame's
-    /// pixels — they exceed its image limits, or its image budget cannot hold
-    /// them beside the images already registered. A refused frame draws
-    /// nothing and is not offered to the same engine again; the refusal is
-    /// also logged through `tracing`. Publishing a different frame, or
-    /// clearing, resets it to `None`.
+    /// [`RegistrationState::Pending`] while no frame is published and until
+    /// the published frame's first recording pass settles it, then
+    /// [`RegistrationState::Registered`] — the frame is on screen — or
+    /// [`RegistrationState::Refused`] with the [`RegistrationError`] the
+    /// scene backend rejected the frame's pixels with: they exceed its image
+    /// limits, or its image budget cannot hold them beside the images
+    /// already registered. A refused frame draws nothing and is not offered
+    /// to the same engine again; the refusal is also logged through
+    /// `tracing`. Publishing a different frame, or clearing, resets it to
+    /// `Pending`.
     ///
     /// The value changes from the main-thread executor after the frame that
-    /// attempted the registration, never from inside rendering, and a
-    /// refusal of a frame that has since been replaced is never reported.
+    /// attempted the registration, never from inside rendering, and the
+    /// outcome of a frame that has since been replaced is never reported.
     #[must_use]
-    pub fn failure(&self) -> Computed<Option<RegistrationError>> {
-        self.state.failure.clone().computed()
+    pub fn registration(&self) -> Computed<RegistrationState> {
+        self.state.registration.clone().computed()
     }
 }
 
@@ -694,7 +697,7 @@ pub fn reactive_image() -> (ReactiveImageHandle, ReactiveImage) {
         frame: RefCell::new(None),
         dimensions: Binding::container(None),
         invalidator: RefCell::new(None),
-        failure: Binding::container(None),
+        registration: Binding::container(RegistrationState::Pending),
     });
     (
         ReactiveImageHandle {
@@ -779,11 +782,11 @@ impl SceneContent for ReactiveImageSceneContent {
         };
         let dimensions = (pixels.width, pixels.height);
         // Checked on every recording, not only on a new offer: publishing a
-        // different frame resets the failure state, and a later publish of
-        // the refused grid lands here as an unchanged frame.
+        // different frame resets the registration state, and a later publish
+        // of the refused grid lands here as an unchanged frame.
         let state = Rc::downgrade(&self.state);
         report(
-            &self.state.failure,
+            &self.state.registration,
             registration.as_ref().err(),
             move || {
                 state
@@ -935,7 +938,7 @@ fn frame_fingerprint(decoded: &DecodedRgba) -> u64 {
 mod tests {
     use super::{
         Image, Interpolation, ReactiveImageSceneContent, ReactiveImageState, RegistrationError,
-        reactive_image, rgba16f_to_srgb8,
+        RegistrationState, reactive_image, rgba16f_to_srgb8,
     };
     use crate::scene::test_backend::{Budget, frame};
     use alloc::rc::Rc;
@@ -1052,6 +1055,7 @@ mod tests {
     #[cfg(all(feature = "gpu", not(target_arch = "wasm32")))]
     #[test]
     fn published_frames_draw_through_their_own_registrations() {
+        waterui_testing::install_test_executor();
         let (handle, view) = reactive_image();
         let mut mount = Mount::new(Rc::clone(&view.state));
 
@@ -1130,18 +1134,22 @@ mod tests {
     }
 
     /// A static image the engine refuses draws nothing, is offered to that
-    /// engine once, and reports the refusal on its failure state — from the
-    /// executor, after the recording pass. A replacement engine with room
-    /// draws it and clears the failure.
+    /// engine once, and reports the refusal on its registration state — from
+    /// the executor, after the recording pass. A replacement engine with
+    /// room draws it and settles the registration.
     #[test]
     fn a_refused_image_draws_nothing_and_reports_the_refusal() {
         waterui_testing::install_test_executor();
         let image = sixteen_texels();
-        let failure = image.failure();
-        let mut content = image.clone().into_scene_content(Some(image.failure));
+        let registration = image.registration();
+        let mut content = image.clone().into_scene_content(Some(image.registration));
         let refusing = Budget::new(8);
         let resources = SceneResources::new(Rc::clone(&refusing));
 
+        assert!(
+            matches!(registration.snapshot(), RegistrationState::Pending),
+            "an undrawn image is pending"
+        );
         assert_eq!(frame(&mut content, &resources), []);
         assert_eq!(frame(&mut content, &resources), []);
         assert_eq!(
@@ -1150,11 +1158,13 @@ mod tests {
             "a refused image is not offered to the engine again on every frame"
         );
         assert!(
-            failure.snapshot().is_none(),
+            matches!(registration.snapshot(), RegistrationState::Pending),
             "the refusal is delivered from the executor, not inside the recording pass"
         );
         assert_eq!(waterui_testing::drain_parked_local_work(), 1);
-        let error = failure.snapshot().expect("the refusal is reported");
+        let RegistrationState::Refused(error) = registration.snapshot() else {
+            panic!("the refusal is reported: {:?}", registration.snapshot());
+        };
         assert!(is_the_budget_refusal(&error), "{error}");
 
         content.rebuild_for_engine();
@@ -1163,8 +1173,8 @@ mod tests {
         assert_eq!(frame(&mut content, &resources).len(), 1);
         assert_eq!(waterui_testing::drain_parked_local_work(), 1);
         assert!(
-            failure.snapshot().is_none(),
-            "an engine that takes the image clears the failure"
+            matches!(registration.snapshot(), RegistrationState::Registered),
+            "an engine that takes the image settles the registration"
         );
     }
 
@@ -1175,7 +1185,7 @@ mod tests {
     fn a_refused_frame_is_reported_on_the_handle() {
         waterui_testing::install_test_executor();
         let (handle, view) = reactive_image();
-        let failure = handle.failure();
+        let registration = handle.registration();
         let mut content = ReactiveImageSceneContent {
             state: Rc::clone(&view.state),
             content_mode: None,
@@ -1186,6 +1196,10 @@ mod tests {
         let refused = sixteen_texels();
 
         handle.set(refused.clone());
+        assert!(
+            matches!(registration.snapshot(), RegistrationState::Pending),
+            "a published frame is pending until a recording settles it"
+        );
         assert_eq!(frame(&mut content, &resources), []);
         assert_eq!(waterui_testing::drain_parked_local_work(), 1);
         assert_eq!(frame(&mut content, &resources), []);
@@ -1194,48 +1208,60 @@ mod tests {
             1,
             "a refused frame is not offered to the engine again on every frame"
         );
-        let error = failure.snapshot().expect("the refusal is reported");
+        let RegistrationState::Refused(error) = registration.snapshot() else {
+            panic!("the refusal is reported: {:?}", registration.snapshot());
+        };
         assert!(is_the_budget_refusal(&error), "{error}");
 
         // Republishing the refused grid keeps its refusal.
         handle.set(refused.clone());
-        assert!(failure.snapshot().is_some());
+        assert!(matches!(
+            registration.snapshot(),
+            RegistrationState::Refused(_)
+        ));
         assert_eq!(frame(&mut content, &resources), []);
         assert_eq!(backend.attempts.get(), 1);
 
-        // Clearing resets the failure; publishing the refused grid again is
+        // Clearing resets to pending; publishing the refused grid again is
         // reported again, though the content still holds its refusal.
         handle.clear();
-        assert!(failure.snapshot().is_none());
+        assert!(matches!(
+            registration.snapshot(),
+            RegistrationState::Pending
+        ));
         handle.set(refused);
         assert_eq!(frame(&mut content, &resources), []);
         assert_eq!(backend.attempts.get(), 1);
         assert_eq!(waterui_testing::drain_parked_local_work(), 1);
         assert!(
-            failure
-                .snapshot()
-                .is_some_and(|error| is_the_budget_refusal(&error))
+            matches!(&registration.snapshot(), RegistrationState::Refused(error) if is_the_budget_refusal(error))
         );
 
         // A frame that fits draws, and the stale refusal of the frame it
         // replaced never lands.
         handle.set(Image::new(vec![255; 2 * 2 * 4], 2, 2));
         assert!(
-            failure.snapshot().is_none(),
-            "a different frame resets the failure"
+            matches!(registration.snapshot(), RegistrationState::Pending),
+            "a different frame resets to pending"
         );
         assert_eq!(frame(&mut content, &resources).len(), 1);
         handle.set(sixteen_texels());
         assert_eq!(frame(&mut content, &resources), []);
         handle.set(Image::new(vec![255; 4], 1, 1));
-        assert_eq!(waterui_testing::drain_parked_local_work(), 1);
+        // Two settlements were queued — the 2x2 frame's registration and the
+        // 4x4 frame's refusal — and both are dropped: the frames that made
+        // them have been replaced.
+        assert_eq!(waterui_testing::drain_parked_local_work(), 2);
         assert!(
-            failure.snapshot().is_none(),
-            "a refusal of a replaced frame is not reported"
+            matches!(registration.snapshot(), RegistrationState::Pending),
+            "an outcome of a replaced frame is not reported"
         );
         assert_eq!(frame(&mut content, &resources).len(), 1);
-        assert_eq!(waterui_testing::drain_parked_local_work(), 0);
-        assert!(failure.snapshot().is_none());
+        assert_eq!(waterui_testing::drain_parked_local_work(), 1);
+        assert!(
+            matches!(registration.snapshot(), RegistrationState::Registered),
+            "the frame on display settles Registered"
+        );
     }
 
     #[test]
