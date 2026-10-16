@@ -64,6 +64,7 @@ fn photo_section() -> impl View {
             move |event| match event {
                 PhotoEvent::Loaded => status.set(String::from("Loaded successfully")),
                 PhotoEvent::Error(msg) => status.set(format!("Error: {msg}")),
+                other => status.set(format!("{other:?}")),
             }
         })
         .blur(blur_value.clone()); // Pass binding for reactive blur
@@ -133,6 +134,7 @@ fn custom_url_section() -> impl View {
                                         status.set(String::from("Loaded successfully"))
                                     }
                                     PhotoEvent::Error(msg) => status.set(format!("Error: {msg}")),
+                                    other => status.set(format!("{other:?}")),
                                 }
                             })
                             .blur(blur.clone());
