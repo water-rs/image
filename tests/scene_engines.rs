@@ -155,7 +155,7 @@ fn fill_covers_the_box_and_clips_what_hangs_off_it() {
     assert_eq!(pixel(&output, 192, 232), BLUE);
     // The red quarter and the corner marker are off the left edge entirely.
     assert!(
-        !output.rgba8.as_chunks::<4>().0.contains(&MAGENTA),
+        !output.rgba8().as_chunks::<4>().0.contains(&MAGENTA),
         "the clip must keep the overflowing corner marker out of the box"
     );
 }
