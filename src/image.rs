@@ -36,7 +36,10 @@ use core::fmt;
 use half::f16;
 use num_traits::ToPrimitive as _;
 use waterui_core::layout::Size as LayoutSize;
-use waterui_core::layout::{LayoutInvalidationCallback, Point, ProposalSize, Rect, StretchAxis};
+use waterui_core::layout::{
+    LayoutError, LayoutInvalidationCallback, PlacementInput, Point, ProposalSize, Rect,
+    StretchAxis, UnitPoint,
+};
 use waterui_core::reactive::watcher::BoxWatcherGuard;
 use waterui_core::{AnyView, Binding, Computed, Environment, Signal, SignalExt, View};
 #[cfg(feature = "gpu")]
@@ -500,6 +503,16 @@ impl ImageLayout {
 impl Layout for ImageLayout {
     fn size_that_fits(&self, proposal: ProposalSize, _children: &[&dyn SubView]) -> LayoutSize {
         self.resolve(proposal)
+    }
+
+    /// The image box centred in the bounds, where `place` draws it: the leaf
+    /// rule.
+    fn resolve_extent(
+        &self,
+        input: PlacementInput,
+        _children: &[&dyn SubView],
+    ) -> Result<Rect, LayoutError> {
+        Ok(input.bounds.align(input.extent()?, UnitPoint::CENTER))
     }
 
     fn place(
