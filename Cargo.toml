@@ -96,43 +96,43 @@ suiteki = { git = "https://github.com/water-rs/suiteki", branch = "dev" }
 # the members the `.filter(F)` / `.effect(E)` types ride on, so every filtrate
 # in the graph must come from the same framework commit or a filter type built
 # on one side is a different type on the other.
-cherenkov = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-cherenkov-cpu = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-cherenkov-gpu = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-filtrate = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-filtrate-core = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-filtrate-derive = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
+cherenkov = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+cherenkov-cpu = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+cherenkov-gpu = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+filtrate = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+filtrate-core = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+filtrate-derive = { git = "https://github.com/water-rs/waterui", branch = "dev" }
 
 # The framework on the waterui branch named above. Every `waterui-*` crate in
 # the graph must resolve to this one source — a registry `waterui-core` beside
 # the facade's own path dependencies gives two `View` traits in one graph.
-waterui = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-assets = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-assets-core = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-controls = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-core = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-dylib = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-form = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-graphics = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-icon = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-internal = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-layout = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-locale = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-macros = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-media = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-navigation = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-shape = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-text = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-url = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-video = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-backend-core = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-inspector-protocol = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-map = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-mcp-protocol = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-preview-protocol = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-testing = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-watcher-set = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
-waterui-webview = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
+waterui = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-assets = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-assets-core = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-controls = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-core = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-dylib = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-form = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-graphics = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-icon = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-internal = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-layout = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-locale = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-macros = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-media = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-navigation = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-shape = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-text = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-url = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-video = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-backend-core = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-inspector-protocol = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-map = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-mcp-protocol = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-preview-protocol = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-testing = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-watcher-set = { git = "https://github.com/water-rs/waterui", branch = "dev" }
+waterui-webview = { git = "https://github.com/water-rs/waterui", branch = "dev" }
 
 # The extracted component crates the facade and the test graph name, each on
 # the source water-rs/waterui's own patch table names on the branch above.
@@ -176,7 +176,7 @@ waterkit-video-streaming = { git = "https://github.com/water-rs/waterkit", branc
 # `dev`. The framework's vello fork entries serve only `cherenkov-bench`,
 # which this graph does not pull, so they are not repeated here and the graph
 # carries no vello.
-hydrolysis = { git = "https://github.com/water-rs/waterui", branch = "feat/1323-response-geometry" }
+hydrolysis = { git = "https://github.com/water-rs/waterui", branch = "dev" }
 hydrolysis-m3 = { git = "https://github.com/water-rs/hydrolysis-m3", branch = "feat/response-geometry" }
 
 # Mirrored from the water-rs/waterui workspace [patch.crates-io]
