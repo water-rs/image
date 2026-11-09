@@ -163,7 +163,9 @@ fn a_reactive_image_remeasures_when_its_pixels_change() {
                 view.borrow_mut().take().expect("image is mounted once"),
             ))
         });
-    let empty_bounds = bounds(&mut app);
+    // An image with no pixels answers a zero size, so it has no accessibility
+    // element until it has something to show.
+    assert_no_image(&mut app);
 
     handle.set(Image::new(vec![255; 640 * 360 * 4], 640, 360));
     app.settle();
@@ -175,5 +177,12 @@ fn a_reactive_image_remeasures_when_its_pixels_change() {
 
     handle.clear();
     app.settle();
-    assert_close(bounds(&mut app), empty_bounds);
+    assert_no_image(&mut app);
+}
+
+fn assert_no_image(app: &mut OffscreenApp) {
+    assert!(
+        !app.query().role(Role::IMAGE).label("Wide image").exists(),
+        "an empty image answers a zero size and has no accessibility element"
+    );
 }

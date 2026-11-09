@@ -6,7 +6,7 @@ resolver = "2"
 name = "waterui-image"
 version = "0.5.0"
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.99"
 authors = ["Lexo Liu <me@lexo.cool>"]
 license = "Apache-2.0 OR MIT"
 readme = "README.md"
@@ -141,7 +141,7 @@ waterui-math = { git = "https://github.com/water-rs/math", branch = "dev" }
 waterui-svg = { git = "https://github.com/water-rs/svg", rev = "16f99e021f735d0b1b31c95552b074e953d56418" }
 waterui-barcode = { git = "https://github.com/water-rs/barcode", branch = "dev" }
 waterui-canvas = { git = "https://github.com/water-rs/canvas", branch = "dev" }
-waterui-chart = { git = "https://github.com/water-rs/chart", branch = "dev" }
+waterui-chart = { git = "https://github.com/water-rs/chart", branch = "feat/response-geometry" }
 waterui-map-gpu = { git = "https://github.com/water-rs/map-gpu", branch = "dev" }
 waterui-video-gpu = { git = "https://github.com/water-rs/video-gpu", branch = "dev" }
 waterui-particle = { git = "https://github.com/water-rs/particle", rev = "bf663af85211d1f0bcce511b94ac435efad046a6" }
@@ -177,7 +177,7 @@ waterkit-video-streaming = { git = "https://github.com/water-rs/waterkit", branc
 # which this graph does not pull, so they are not repeated here and the graph
 # carries no vello.
 hydrolysis = { git = "https://github.com/water-rs/waterui", branch = "dev" }
-hydrolysis-m3 = { git = "https://github.com/water-rs/hydrolysis-m3", branch = "dev" }
+hydrolysis-m3 = { git = "https://github.com/water-rs/hydrolysis-m3", branch = "feat/response-geometry" }
 
 # Mirrored from the water-rs/waterui workspace [patch.crates-io]
 # (water-rs/cherenkov#229).
@@ -186,13 +186,16 @@ hydrolysis-m3 = { git = "https://github.com/water-rs/hydrolysis-m3", branch = "d
 # surface negotiates Extended Display P3 or BT.2100 (gfx-rs/wgpu#10175, fixed on
 # trunk, not yet released for v30). Drop these entries once wgpu-hal 30.0.2
 # ships the backport.
-naga = { git = "https://github.com/water-rs/wgpu", rev = "11e85956a78886d1a96d586f255ea9b0661da2cd" }
-naga-types = { git = "https://github.com/water-rs/wgpu", rev = "11e85956a78886d1a96d586f255ea9b0661da2cd" }
-wgpu = { git = "https://github.com/water-rs/wgpu", rev = "11e85956a78886d1a96d586f255ea9b0661da2cd" }
-wgpu-core = { git = "https://github.com/water-rs/wgpu", rev = "11e85956a78886d1a96d586f255ea9b0661da2cd" }
-wgpu-core-deps-apple = { git = "https://github.com/water-rs/wgpu", rev = "11e85956a78886d1a96d586f255ea9b0661da2cd" }
-wgpu-core-deps-emscripten = { git = "https://github.com/water-rs/wgpu", rev = "11e85956a78886d1a96d586f255ea9b0661da2cd" }
-wgpu-core-deps-windows-linux-android = { git = "https://github.com/water-rs/wgpu", rev = "11e85956a78886d1a96d586f255ea9b0661da2cd" }
-wgpu-hal = { git = "https://github.com/water-rs/wgpu", rev = "11e85956a78886d1a96d586f255ea9b0661da2cd" }
-wgpu-naga-bridge = { git = "https://github.com/water-rs/wgpu", rev = "11e85956a78886d1a96d586f255ea9b0661da2cd" }
-wgpu-types = { git = "https://github.com/water-rs/wgpu", rev = "11e85956a78886d1a96d586f255ea9b0661da2cd" }
+naga = { git = "https://github.com/water-rs/wgpu", branch = "fix/metal-shared-memory-v30" }
+naga-types = { git = "https://github.com/water-rs/wgpu", branch = "fix/metal-shared-memory-v30" }
+wgpu = { git = "https://github.com/water-rs/wgpu", branch = "fix/metal-shared-memory-v30" }
+wgpu-core = { git = "https://github.com/water-rs/wgpu", branch = "fix/metal-shared-memory-v30" }
+wgpu-core-deps-apple = { git = "https://github.com/water-rs/wgpu", branch = "fix/metal-shared-memory-v30" }
+wgpu-core-deps-emscripten = { git = "https://github.com/water-rs/wgpu", branch = "fix/metal-shared-memory-v30" }
+wgpu-core-deps-windows-linux-android = { git = "https://github.com/water-rs/wgpu", branch = "fix/metal-shared-memory-v30" }
+wgpu-hal = { git = "https://github.com/water-rs/wgpu", branch = "fix/metal-shared-memory-v30" }
+wgpu-naga-bridge = { git = "https://github.com/water-rs/wgpu", branch = "fix/metal-shared-memory-v30" }
+wgpu-types = { git = "https://github.com/water-rs/wgpu", branch = "fix/metal-shared-memory-v30" }
+# The shader runtime built against that wgpu, as the framework workspace
+# patches it.
+shaderloom = { git = "https://github.com/water-rs/shaderloom", branch = "dev" }
