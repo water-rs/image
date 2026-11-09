@@ -1750,7 +1750,7 @@ dependencies = [
 [[package]]
 name = "hydrolysis-m3"
 version = "0.3.1"
-source = "git+https://github.com/water-rs/hydrolysis-m3?branch=feat%2Fresponse-geometry#0979faf05ffa037c158e058f9aea75fdaa39323d"
+source = "git+https://github.com/water-rs/hydrolysis-m3?branch=dev#521eb8b8fd1d0e95c651ea872a15d501cc3b1a64"
 dependencies = [
  "hydrolysis",
  "material-color-utils",
@@ -6756,7 +6756,7 @@ source = "git+https://github.com/water-rs/canvas?branch=dev#60b0ac8165a13351b7ab
 [[patch.unused]]
 name = "waterui-chart"
 version = "0.3.0"
-source = "git+https://github.com/water-rs/chart?branch=feat%2Fresponse-geometry#c0cb161bb41d72142c0e58739192e6c0a2fdf2c5"
+source = "git+https://github.com/water-rs/chart?branch=dev#c4c0dcb5bfc6ec97257b93bab6e0f8776dc9f951"
 
 [[patch.unused]]
 name = "waterui-map-gpu"
