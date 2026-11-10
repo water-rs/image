@@ -1,17 +1,16 @@
-//! Image views drawn through the engine-neutral content contract.
+//! Image views drawn on a `Canvas`.
 //!
 //! This module provides [`Image`], a view that displays decoded pixels. The
-//! pixels register with the recording's [`RecordingResources`] on the first frame
-//! `build_scene` draws them, and each recording is a single `Draw::image`
-//! call with the destination rectangle placement resolved, so the same view
-//! renders on the GPU rasterizer, on a CPU rasterizer an embedded build
-//! uses, and inside a backend that owns its own scene.
+//! pixels are an `ImageSource` the render target registers on first use, and
+//! the view is a single `image` command whose destination rectangle follows
+//! the canvas size, so whichever renderer draws the screen around the view
+//! draws the image.
 //!
-//! The engine can refuse the pixels — an image beyond its image limits, or
-//! one its image budget cannot hold beside the images already registered. A
-//! refused image draws nothing and reports the refusal on its registration
-//! state: [`Image::registration`] for a static image,
-//! [`ReactiveImageHandle::registration`] for a reactive one.
+//! The render target can refuse the pixels — an image beyond its image
+//! limits, or one its image budget cannot hold beside the images already
+//! registered. A refused image draws nothing and reports the refusal as its
+//! status: [`Image::status`] for a static image,
+//! [`ReactiveImageHandle::status`] for a reactive one.
 //!
 //! # Example
 //!
@@ -26,13 +25,11 @@
 //! ```
 
 use alloc::borrow::ToOwned;
-use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
-use core::cell::RefCell;
-use core::fmt;
 
+use crate::registration::RegistrationState;
 use half::f16;
 use num_traits::ToPrimitive as _;
 use waterui_core::layout::Size as LayoutSize;
@@ -41,35 +38,37 @@ use waterui_core::layout::{
     StretchAxis, UnitPoint,
 };
 use waterui_core::reactive::watcher::BoxWatcherGuard;
-use waterui_core::{AnyView, Binding, Computed, Environment, Signal, SignalExt, View};
+use waterui_core::{
+    AnyView, Binding, Computed, Environment, Signal, SignalExt, View, flatten_signal,
+};
+#[cfg(feature = "gpu")]
+use waterui_graphics::canvas::Drawing;
+use waterui_graphics::canvas::{Canvas, ImageStatus, Sampling};
 #[cfg(feature = "gpu")]
 use waterui_graphics::cherenkov_gpu::Gpu;
 use waterui_graphics::color::linear_to_srgb;
-use waterui_graphics::draw::{Recorder, Sampling};
 #[cfg(feature = "gpu")]
 use waterui_graphics::{OffscreenError, OffscreenImage, OffscreenRenderer, OffscreenSize};
-use waterui_graphics::{RecordingResources, SceneContent, SceneInvalidator, SceneView};
 use waterui_layout::{
-    ContentMode, Layout, SubView, SubviewPlacement, container::FixedContainer, frame::Frame,
+    ContentMode, Layout, SubView, SubviewPlacement, container::FixedContainer, frame,
 };
 
 use crate::codec::{self, DecodedRgba};
-use crate::scene::{
-    ImageSceneContent, Pixels, Registration, RegistrationError, RegistrationState, pixel_size,
-    register, report,
-};
+#[cfg(feature = "gpu")]
+use crate::placement::u32_to_f32;
+use crate::placement::{Frame, pixel_size};
 
 pub use crate::codec::DecodePath;
 
 /// An image view.
 ///
-/// `Image` owns its decoded pixels as a shared [`Pixels`] grid and draws them
-/// as one image command. Placement inside the box the layout gives the view is
-/// a destination rectangle, not a pipeline: see [`Image::resizable`] and
+/// `Image` owns its decoded pixels as a shared pixel grid and draws them as one
+/// image command. Placement inside the box the layout gives the view is a
+/// destination rectangle, not a pipeline: see [`Image::resizable`] and
 /// [`Image::content_mode`].
 ///
-/// The engine may refuse to register the pixels; the image then draws nothing
-/// and [`Image::registration`] reports the refusal.
+/// The render target may refuse to register the pixels; the image then draws
+/// nothing and [`Image::status`] reports the refusal.
 ///
 /// # Example
 ///
@@ -84,18 +83,14 @@ pub use crate::codec::DecodePath;
 /// ```
 #[derive(Debug, Clone)]
 pub struct Image {
-    pixels: Pixels,
-    /// How the engine samples between texels.
-    sampling: Sampling,
+    /// The pixels and how they are sampled between texels.
+    frame: Frame,
     /// When `true`, the image takes the box its parent proposes instead of
     /// keeping its natural size and only scaling down (the default).
     resizable: bool,
     /// Aspect handling inside that box. `None` stretches each axis
     /// independently, which is what `.resizable()` alone means.
     content_mode: Option<ContentMode>,
-    /// How the engine's registration of the pixels stands, shared by every
-    /// clone and written by every mount; see [`Image::registration`].
-    registration: Binding<RegistrationState>,
 }
 
 /// Why [`Image::render_offscreen`] produced no frame.
@@ -106,10 +101,10 @@ pub enum RenderOffscreenError {
     /// render, or the target could not be read back.
     #[error(transparent)]
     Offscreen(#[from] OffscreenError),
-    /// The engine refused the image's pixels, so the frame would have held
-    /// nothing of it.
-    #[error(transparent)]
-    Rejected(#[from] RegistrationError),
+    /// The renderer refused the image's pixels, so the frame would have held
+    /// nothing of it. The refusal is the one [`ImageStatus::Refused`] carries.
+    #[error("the renderer refused the image: {0}")]
+    Rejected(alloc::sync::Arc<dyn core::error::Error + Send + Sync>),
 }
 
 /// How the image should be filtered when its pixel grid does not align
@@ -214,7 +209,8 @@ impl Image {
     ///
     /// # Panics
     ///
-    /// Panics if the pixel data length doesn't match `width * height * 4`.
+    /// Panics if the pixel data length doesn't match `width * height * 4`, or
+    /// if the image has no area.
     #[must_use]
     pub fn new(pixels: Vec<u8>, width: u32, height: u32) -> Self {
         assert_eq!(
@@ -257,32 +253,38 @@ impl Image {
 
     fn from_rgba8(pixels: Vec<u8>, width: u32, height: u32) -> Self {
         Self {
-            pixels: Pixels::new(pixels, width, height),
-            sampling: Interpolation::default().to_sampling(),
+            frame: Frame::new(
+                pixels,
+                width,
+                height,
+                Interpolation::default().to_sampling(),
+            ),
             resizable: false,
             content_mode: None,
-            registration: Binding::container(RegistrationState::Pending),
         }
     }
 
-    /// How the registration of this image's pixels with the engine stands.
+    /// What the render target made of this image's pixels.
     ///
-    /// [`RegistrationState::Pending`] until a drawn frame's recording pass
-    /// settles it, then [`RegistrationState::Registered`] — the pixels are on
-    /// screen — or [`RegistrationState::Refused`] with the
-    /// [`RegistrationError`] the scene backend rejected them with: they
+    /// [`ImageStatus::Pending`] until a target first draws the image, then
+    /// [`ImageStatus::Ready`] — the pixels are on screen — or
+    /// [`ImageStatus::Refused`] with the reason the target rejected them: they
     /// exceed its image limits, or its image budget cannot hold them beside
-    /// the images already registered. A refused image draws nothing, takes
-    /// the layout space its pixel grid asks for, and is not offered to the
-    /// same engine again; the refusal is also logged through `tracing`.
+    /// the images already registered. A refused image draws nothing and takes
+    /// the layout space its pixel grid asks for.
     ///
-    /// The value changes from the main-thread executor after the frame that
-    /// attempted the registration, never from inside rendering. Clones of an
-    /// image share the one registration state, and each of their mounts
-    /// reports into it: the latest registration outcome is the one it holds.
+    /// Clones of an image share the one pixel grid and so the one status.
+    #[must_use]
+    pub fn status(&self) -> Computed<ImageStatus> {
+        self.frame.status()
+    }
+
+    /// How the registration of this image's pixels with the render target
+    /// stands: [`Image::status`] in the older vocabulary, kept only while the
+    /// framework's media component moves to `status()`.
     #[must_use]
     pub fn registration(&self) -> Computed<RegistrationState> {
-        self.registration.clone().computed()
+        self.status().map(RegistrationState::from).computed()
     }
 
     /// Sets the sampling mode for this image.
@@ -292,8 +294,8 @@ impl Image {
     /// edges across non-integer scale factors (icons, pixel art, rasterized
     /// barcodes).
     #[must_use]
-    pub const fn interpolation(mut self, mode: Interpolation) -> Self {
-        self.sampling = mode.to_sampling();
+    pub fn interpolation(mut self, mode: Interpolation) -> Self {
+        self.frame = self.frame.sampled(mode.to_sampling());
         self
     }
 
@@ -330,20 +332,20 @@ impl Image {
 
     /// Get the image dimensions (width, height).
     #[must_use]
-    pub const fn dimensions(&self) -> (u32, u32) {
+    pub fn dimensions(&self) -> (u32, u32) {
         (self.width(), self.height())
     }
 
     /// Get the image width in pixels.
     #[must_use]
-    pub const fn width(&self) -> u32 {
-        self.pixels.width
+    pub fn width(&self) -> u32 {
+        self.frame.width()
     }
 
     /// Get the image height in pixels.
     #[must_use]
-    pub const fn height(&self) -> u32 {
-        self.pixels.height
+    pub fn height(&self) -> u32 {
+        self.frame.height()
     }
 
     /// Decode encoded image bytes and construct an `Image`.
@@ -375,7 +377,7 @@ impl Image {
     ///
     /// `renderer` owns the engine the pixels register against; `size` is the
     /// render target in pixels and `scale` the point-to-pixel factor the
-    /// content's box derives from — `1.0` draws one point per pixel.
+    /// image's box derives from — `1.0` draws one point per pixel.
     ///
     /// # Errors
     ///
@@ -390,16 +392,16 @@ impl Image {
         size: OffscreenSize,
         scale: f32,
     ) -> Result<OffscreenImage, RenderOffscreenError> {
-        let mut content = self.into_scene_content(None);
-        let image = renderer.render(&mut content, size, scale)?;
-        Self::rendered(&content, image)
+        let drawing = self.drawing(size, scale);
+        let image = renderer.render_drawing(&drawing, size)?;
+        self.rendered(image)
     }
 
     /// Renders this image into an offscreen target and reads the frame back.
     ///
     /// `renderer` owns the engine the pixels register against; `size` is the
     /// render target in pixels and `scale` the point-to-pixel factor the
-    /// content's box derives from — `1.0` draws one point per pixel.
+    /// image's box derives from — `1.0` draws one point per pixel.
     ///
     /// # Errors
     ///
@@ -418,21 +420,32 @@ impl Image {
         size: OffscreenSize,
         scale: f32,
     ) -> Result<OffscreenImage, RenderOffscreenError> {
-        let mut content = self.into_scene_content(None);
-        let image = renderer.render(&mut content, size, scale).await?;
-        Self::rendered(&content, image)
+        let drawing = self.drawing(size, scale);
+        let image = renderer.render_drawing(&drawing, size).await?;
+        self.rendered(image)
     }
 
-    /// The frame `content` rendered into, unless its engine refused the
-    /// pixels — the frame then holds nothing of the image.
+    /// The image placed in the box `size` pixels make at `scale` pixels per
+    /// point, as a standalone recording.
     #[cfg(feature = "gpu")]
-    fn rendered(
-        content: &ImageSceneContent,
-        image: OffscreenImage,
-    ) -> Result<OffscreenImage, RenderOffscreenError> {
-        content
-            .rejection()
-            .map_or(Ok(image), |error| Err(error.clone().into()))
+    fn drawing(&self, size: OffscreenSize, scale: f32) -> Drawing {
+        let bounds = LayoutSize::new(
+            u32_to_f32(size.width()) / scale,
+            u32_to_f32(size.height()) / scale,
+        );
+        Drawing::record(bounds, |cx| {
+            self.frame.record(cx, bounds, self.content_mode);
+        })
+    }
+
+    /// `image`, unless the renderer refused the pixels it was rendered from —
+    /// the frame then holds nothing of the image.
+    #[cfg(feature = "gpu")]
+    fn rendered(&self, image: OffscreenImage) -> Result<OffscreenImage, RenderOffscreenError> {
+        match self.status().snapshot() {
+            ImageStatus::Refused(error) => Err(RenderOffscreenError::Rejected(error)),
+            _ => Ok(image),
+        }
     }
 
     fn from_decoded(decoded: DecodedRgba) -> Self {
@@ -451,25 +464,28 @@ impl Image {
             }
         }
     }
-
-    /// The scene content that draws this image, dropping the layout wrapper.
-    /// `state` is the registration state it reports its outcome into.
-    fn into_scene_content(self, state: Option<Binding<RegistrationState>>) -> ImageSceneContent {
-        ImageSceneContent::new(self.pixels, self.sampling, self.content_mode, state)
-    }
 }
 
 impl View for Image {
     fn body(self, _env: &Environment) -> impl View {
         let dimensions = Computed::constant(Some(self.dimensions()));
         let resizable = self.resizable;
-        let registration = self.registration.clone();
-        let scene = SceneView::new(self.into_scene_content(Some(registration)));
-        if resizable {
-            AnyView::new(Frame::new(scene))
-        } else {
-            AnyView::new(FixedContainer::new(ImageLayout { dimensions }, (scene,)))
-        }
+        let mode = self.content_mode;
+        let natural = Computed::constant(self.frame.size());
+        let frame = self.frame;
+        let canvas = Canvas::new(move |cx| frame.draw(cx, mode)).intrinsic_size(natural);
+        sized(canvas, resizable, dimensions)
+    }
+}
+
+/// `canvas` laid out as an image: filling the box it is given when
+/// `resizable`, otherwise at its pixel size, scaled down to fit a smaller
+/// offer.
+fn sized(canvas: Canvas, resizable: bool, dimensions: Computed<Option<(u32, u32)>>) -> AnyView {
+    if resizable {
+        AnyView::new(frame::Frame::new(canvas))
+    } else {
+        AnyView::new(FixedContainer::new(ImageLayout { dimensions }, (canvas,)))
     }
 }
 
@@ -544,77 +560,12 @@ impl Layout for ImageLayout {
     }
 }
 
-/// The state one [`ReactiveImage`] shares with its handle.
-struct ReactiveImageState {
-    /// The frame last published — pixels plus their sampling — or `None`
-    /// while there is nothing to draw. `build_scene` draws from it.
-    frame: RefCell<Option<(Pixels, Sampling)>>,
-    /// The displayed frame's pixel dimensions, as a binding the view's
-    /// layout reads so a size change re-lays out without a rebuild.
-    dimensions: Binding<Option<(u32, u32)>>,
-    /// The invalidator the mounted content registered, so `publish` can ask
-    /// for the frame that re-records the new frame's placement.
-    invalidator: RefCell<Option<SceneInvalidator>>,
-    /// How the engine's registration of the published frame stands; see
-    /// [`ReactiveImageHandle::registration`].
-    registration: Binding<RegistrationState>,
-}
-
-impl fmt::Debug for ReactiveImageState {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ReactiveImageState")
-            .field("dimensions", &self.dimensions.snapshot())
-            .field("published", &self.frame.borrow().is_some())
-            .field("registration", &self.registration.snapshot())
-            .finish_non_exhaustive()
-    }
-}
-
-impl ReactiveImageState {
-    /// Stores `frame` as the one to draw and asks the content for the frame
-    /// that re-records it.
-    ///
-    /// Registration itself can only happen inside `build_scene` — that is
-    /// where the recording's `RecordingResources` arrive — so a publish
-    /// never touches the engine itself. The frame waits in the shared state,
-    /// and the next `build_scene` registers its pixels and names the
-    /// registration in the recording it produces: a recording already
-    /// installed keeps drawing the pixels it was recorded with until that
-    /// replacement lands, so no frame ever samples a partly written image.
-    ///
-    /// A different frame starts pending: whatever the engine said about the
-    /// previous one does not describe it. Republishing the frame on display
-    /// keeps its settlement, since its registration stands.
-    fn publish(state: &Rc<Self>, frame: Option<(Pixels, Sampling)>) {
-        state.dimensions.set(
-            frame
-                .as_ref()
-                .map(|(pixels, _)| (pixels.width, pixels.height)),
-        );
-        if !state.displays(frame.as_ref().map(|(pixels, _)| pixels)) {
-            state.registration.set(RegistrationState::Pending);
-        }
-        *state.frame.borrow_mut() = frame;
-        if let Some(invalidator) = state.invalidator.borrow().as_ref() {
-            invalidator();
-        }
-    }
-
-    /// Whether `pixels` is the very grid on display, or both are nothing.
-    fn displays(&self, pixels: Option<&Pixels>) -> bool {
-        match (self.frame.borrow().as_ref(), pixels) {
-            (Some((current, _)), Some(pixels)) => current.is(pixels),
-            (None, None) => true,
-            _ => false,
-        }
-    }
-}
-
 /// A handle that publishes decoded frames into one persistent [`ReactiveImage`].
 #[derive(Clone, Debug)]
 pub struct ReactiveImageHandle {
-    state: Rc<ReactiveImageState>,
+    /// The frame last published, or `None` while there is nothing to draw. The
+    /// view's canvas, its intrinsic size and the handle's status all follow it.
+    frame: Binding<Option<Frame>>,
 }
 
 impl ReactiveImageHandle {
@@ -623,45 +574,61 @@ impl ReactiveImageHandle {
     /// Sampling mode travels with the frame; the view's own `resizable` and
     /// content-mode settings are the ones that place it.
     pub fn set(&self, image: Image) {
-        ReactiveImageState::publish(&self.state, Some((image.pixels, image.sampling)));
+        self.frame.set(Some(image.frame));
     }
 
     /// Removes the displayed frame without replacing the image view.
     pub fn clear(&self) {
-        ReactiveImageState::publish(&self.state, None);
+        self.frame.set(None);
     }
 
-    /// How the registration of the published frame stands.
+    /// What the render target made of the published frame.
     ///
-    /// [`RegistrationState::Pending`] while no frame is published and until
-    /// the published frame's first recording pass settles it, then
-    /// [`RegistrationState::Registered`] — the frame is on screen — or
-    /// [`RegistrationState::Refused`] with the [`RegistrationError`] the
-    /// scene backend rejected the frame's pixels with: they exceed its image
-    /// limits, or its image budget cannot hold them beside the images
-    /// already registered. A refused frame draws nothing and is not offered
-    /// to the same engine again; the refusal is also logged through
-    /// `tracing`. Publishing a different frame, or clearing, resets it to
+    /// [`ImageStatus::Pending`] while no frame is published and until a
+    /// target first draws the published frame, then [`ImageStatus::Ready`] —
+    /// the frame is on screen — or [`ImageStatus::Refused`] with the reason
+    /// the target rejected the frame's pixels: they exceed its image limits,
+    /// or its image budget cannot hold them beside the images already
+    /// registered. A refused frame draws nothing. Publishing a different
+    /// frame follows that frame's own status, and clearing returns to
     /// `Pending`.
-    ///
-    /// The value changes from the main-thread executor after the frame that
-    /// attempted the registration, never from inside rendering, and the
-    /// outcome of a frame that has since been replaced is never reported.
+    #[must_use]
+    pub fn status(&self) -> Computed<ImageStatus> {
+        flatten_signal(self.frame.clone().map(|frame| {
+            frame.map_or_else(
+                || Computed::constant(ImageStatus::Pending),
+                |frame| frame.status(),
+            )
+        }))
+    }
+
+    /// How the registration of the published frame stands:
+    /// [`ReactiveImageHandle::status`] in the older vocabulary, kept only
+    /// while the framework's media component moves to `status()`.
     #[must_use]
     pub fn registration(&self) -> Computed<RegistrationState> {
-        self.state.registration.clone().computed()
+        self.status().map(RegistrationState::from).computed()
+    }
+
+    /// The displayed frame's pixel dimensions, which the view's layout reads
+    /// so a size change re-lays out without a rebuild.
+    fn dimensions(&self) -> Computed<Option<(u32, u32)>> {
+        self.frame
+            .clone()
+            .map(|frame| frame.map(|frame| (frame.width(), frame.height())))
+            .computed()
     }
 }
 
 /// An image view whose decoded frame can change without rebuilding its
 /// subtree.
 ///
-/// One [`SceneView`] mounts [`ReactiveImageSceneContent`] for the view's
-/// whole life: a published frame registers through the recording that next
-/// builds it, so nothing remounts and no state inside the subtree is lost.
+/// One [`Canvas`] mounts for the view's whole life and re-records only the
+/// image command when a frame is published, so nothing remounts and no state
+/// inside the subtree is lost.
 #[derive(Debug)]
 pub struct ReactiveImage {
-    state: Rc<ReactiveImageState>,
+    handle: ReactiveImageHandle,
     resizable: bool,
     content_mode: Option<ContentMode>,
 }
@@ -689,168 +656,39 @@ impl ReactiveImage {
 
 impl View for ReactiveImage {
     fn body(self, _env: &Environment) -> impl View {
-        let dimensions = self.state.dimensions.clone().computed();
-        let scene = SceneView::new(ReactiveImageSceneContent {
-            state: Rc::clone(&self.state),
-            content_mode: self.content_mode,
-            attempt: None,
-        });
-        if self.resizable {
-            AnyView::new(Frame::new(scene))
-        } else {
-            AnyView::new(FixedContainer::new(ImageLayout { dimensions }, (scene,)))
-        }
+        let dimensions = self.handle.dimensions();
+        let natural = dimensions
+            .map(|dimensions| dimensions.and_then(|(width, height)| pixel_size(width, height)));
+        let mode = self.content_mode;
+        let frame = self.handle.frame;
+        // Publishing a frame records the canvas' one image command again, in
+        // place; nothing else re-records.
+        let canvas = Canvas::new(move |cx| {
+            cx.scope(frame, move |cx, frame: &Option<Frame>| {
+                if let Some(frame) = frame {
+                    frame.draw(cx, mode);
+                }
+            });
+        })
+        .intrinsic_size(natural);
+        sized(canvas, self.resizable, dimensions)
     }
 }
 
 /// Creates one persistent image view and its precise frame-update handle.
 #[must_use]
 pub fn reactive_image() -> (ReactiveImageHandle, ReactiveImage) {
-    let state = Rc::new(ReactiveImageState {
-        frame: RefCell::new(None),
-        dimensions: Binding::container(None),
-        invalidator: RefCell::new(None),
-        registration: Binding::container(RegistrationState::Pending),
-    });
+    let handle = ReactiveImageHandle {
+        frame: Binding::container(None),
+    };
     (
-        ReactiveImageHandle {
-            state: Rc::clone(&state),
-        },
+        handle.clone(),
         ReactiveImage {
-            state,
+            handle,
             resizable: false,
             content_mode: None,
         },
     )
-}
-
-/// Scene content that draws whichever frame the handle last published.
-///
-/// The content holds the [`Registered`](waterui_graphics::Registered)
-/// handle for the frame it last uploaded. A publish swaps nothing behind a
-/// recording: the next `build_scene` registers the new pixels, and the
-/// recording it produces names them. A frame the engine refuses records
-/// nothing, and its refusal is kept like a registration, so re-recording that
-/// frame does not offer it to the engine again. Handles are only ever
-/// *released* inside `build_scene` (or on drop, when the content's recording
-/// is tearing down anyway): the contract is that a recording still naming a
-/// resource is never drawn after its release, and only `build_scene` knows
-/// the installed recording has moved on.
-struct ReactiveImageSceneContent {
-    state: Rc<ReactiveImageState>,
-    content_mode: Option<ContentMode>,
-    /// The frame last offered to the engine and what the engine made of it,
-    /// settled inside `build_scene`. Keeping the pixels lets a re-recording
-    /// of an unchanged frame name the one registration — or stay blank on
-    /// the one refusal — instead of offering the frame again. `None` until
-    /// the first frame with pixels.
-    attempt: Option<(Pixels, Registration)>,
-}
-
-impl ReactiveImageSceneContent {
-    /// Lets go of the registration the recordings have stopped naming.
-    fn release(&mut self) {
-        self.attempt = None;
-    }
-}
-
-impl fmt::Debug for ReactiveImageSceneContent {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ReactiveImageSceneContent")
-            .field("content_mode", &self.content_mode)
-            .finish_non_exhaustive()
-    }
-}
-
-impl SceneContent for ReactiveImageSceneContent {
-    fn build_scene(
-        &mut self,
-        recorder: &mut Recorder,
-        resources: &mut RecordingResources<'_>,
-        width: f32,
-        height: f32,
-    ) -> bool {
-        let frame = self.state.frame.borrow().clone();
-        let Some((pixels, sampling)) = frame else {
-            self.release();
-            return false;
-        };
-        // Every publish lands here as a new frame: its pixels get their own
-        // registration rather than swapping behind the id the installed
-        // recording already names — `Registered` is opaque, and the
-        // recording that draws it holds it.
-        let registration = match &self.attempt {
-            Some((attempted, registration)) if attempted.is(&pixels) => registration,
-            _ => {
-                let Some(data) = pixels.upload() else {
-                    self.release();
-                    return false;
-                };
-                &self
-                    .attempt
-                    .insert((pixels.clone(), register(data, resources)))
-                    .1
-            }
-        };
-        let dimensions = (pixels.width, pixels.height);
-        // Checked on every recording, not only on a new offer: publishing a
-        // different frame resets the registration state, and a later publish
-        // of the refused grid lands here as an unchanged frame.
-        let state = Rc::downgrade(&self.state);
-        report(
-            &self.state.registration,
-            registration.as_ref().err(),
-            move || {
-                state
-                    .upgrade()
-                    .is_some_and(|state| state.displays(Some(&pixels)))
-            },
-        );
-        let Ok(image) = registration else {
-            return false;
-        };
-        let id = resources.name(image);
-        crate::scene::draw(
-            recorder,
-            id,
-            dimensions,
-            sampling,
-            self.content_mode,
-            width,
-            height,
-        );
-        false
-    }
-
-    // The registration or refusal, and the frame it was settled for, belong
-    // to the old engine. The published frame stays in the shared `state` — the
-    // semantic source — so the next `build_scene` on the replacement engine
-    // registers and draws it like any other publish.
-    fn rebuild_for_engine(&mut self) {
-        self.release();
-    }
-
-    /// The last published frame's pixel grid, and `None` before the first
-    /// frame arrives: until then the view has no picture, and so no size of
-    /// its own.
-    fn intrinsic_size(&self) -> Option<LayoutSize> {
-        self.state
-            .dimensions
-            .snapshot()
-            .and_then(|(width, height)| pixel_size(width, height))
-    }
-
-    fn set_invalidator(&mut self, invalidator: Option<SceneInvalidator>) {
-        *self.state.invalidator.borrow_mut() = invalidator;
-    }
-}
-
-impl Drop for ReactiveImageSceneContent {
-    fn drop(&mut self) {
-        self.state.invalidator.borrow_mut().take();
-        self.release();
-    }
 }
 
 /// Convenience constructor for building an Image view inline.
@@ -949,340 +787,70 @@ fn frame_fingerprint(decoded: &DecodedRgba) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        Image, Interpolation, ReactiveImageSceneContent, ReactiveImageState, RegistrationError,
-        RegistrationState, reactive_image, rgba16f_to_srgb8,
-    };
-    use crate::scene::test_backend::{Budget, frame};
-    use alloc::rc::Rc;
-    use alloc::vec;
-    use core::cell::Cell;
+    use super::{Image, Interpolation, reactive_image, rgba16f_to_srgb8};
     use half::f16;
     use waterui_core::Signal;
-    use waterui_graphics::draw::Sampling;
-    use waterui_graphics::{ResourceError, SceneContent as _, SceneResources};
+    use waterui_graphics::canvas::{ImageStatus, Sampling};
 
     #[test]
     fn reactive_image_publishes_the_latest_frame() {
         let (handle, _view) = reactive_image();
-        assert!(handle.state.frame.borrow().is_none());
+        let dimensions = handle.dimensions();
+        let status = handle.status();
+        assert_eq!(dimensions.snapshot(), None);
+        assert_eq!(status.snapshot(), ImageStatus::Pending);
 
         handle.set(Image::new(vec![0, 0, 0, 255], 1, 1));
-        let frame = handle.state.frame.borrow();
-        let (pixels, sampling) = frame.as_ref().expect("published frame must be on display");
-        assert_eq!((pixels.width, pixels.height), (1, 1));
-        assert_eq!(*sampling, Sampling::Linear);
-        assert_eq!(handle.state.dimensions.snapshot(), Some((1, 1)));
-        drop(frame);
+        assert_eq!(dimensions.snapshot(), Some((1, 1)));
+        assert_eq!(status.snapshot(), ImageStatus::Pending);
+
+        handle.set(Image::new(vec![0; 2 * 3 * 4], 2, 3).interpolation(Interpolation::Nearest));
+        assert_eq!(dimensions.snapshot(), Some((2, 3)));
+        let frame = handle
+            .frame
+            .snapshot()
+            .expect("the published frame is on display");
+        assert_eq!(frame.sampling, Sampling::Nearest);
 
         handle.clear();
-        assert!(handle.state.frame.borrow().is_none());
-        assert_eq!(handle.state.dimensions.snapshot(), None);
+        assert_eq!(dimensions.snapshot(), None);
+        assert_eq!(status.snapshot(), ImageStatus::Pending);
     }
 
-    /// One mounted reactive image over a `Gpu` engine: the registration the
-    /// content mints on the first drawn frame, and the image ids each
-    /// installed recording names.
-    #[cfg(all(feature = "gpu", not(target_arch = "wasm32")))]
-    struct Mount {
-        engine: Rc<waterui_graphics::cherenkov::Engine<waterui_graphics::cherenkov_gpu::Gpu>>,
-        resources: waterui_graphics::SceneResources,
-        surface: waterui_graphics::cherenkov::Surface<waterui_graphics::cherenkov_gpu::Gpu>,
-        content: ReactiveImageSceneContent,
-        invalidations: Rc<Cell<u32>>,
-        /// The resources the installed recording holds. A host keeps the
-        /// last recording's `HeldResources` until the replacement installs;
-        /// dropping it earlier would release every handle it names.
-        installed: waterui_graphics::HeldResources,
-    }
-
-    #[cfg(all(feature = "gpu", not(target_arch = "wasm32")))]
-    impl Mount {
-        fn new(state: Rc<ReactiveImageState>) -> Self {
-            use waterui_graphics::cherenkov::{Engine, Offscreen, OffscreenFormat};
-            use waterui_graphics::cherenkov_gpu::{Gpu, GpuConfig};
-            use waterui_graphics::{
-                HeldResources, SceneContent as _, SceneInvalidator, SceneResources,
-            };
-
-            let engine = Rc::new(
-                Engine::<Gpu>::new(GpuConfig::default()).expect("the GPU engine failed to start"),
-            );
-            let surface = engine
-                .surface(Offscreen::new((64, 64), OffscreenFormat::LinearF16), || {})
-                .expect("surface");
-            let invalidations = Rc::new(Cell::new(0));
-            let mut content = ReactiveImageSceneContent {
-                state,
-                content_mode: None,
-                attempt: None,
-            };
-            let observed = Rc::clone(&invalidations);
-            let invalidator: SceneInvalidator = Rc::new(move || {
-                observed.set(observed.get() + 1);
-            });
-            content.set_invalidator(Some(invalidator));
-            Self {
-                resources: SceneResources::new(Rc::clone(&engine)),
-                engine,
-                surface,
-                content,
-                invalidations,
-                installed: HeldResources::empty(),
-            }
-        }
-
-        /// Record, install, render: the image ids the recording named.
-        fn frame(&mut self) -> alloc::vec::Vec<waterui_graphics::draw::ImageId> {
-            use waterui_graphics::SceneContent as _;
-            use waterui_graphics::cherenkov::FrameTime;
-            use waterui_graphics::draw::Command;
-
-            let mut resources = self.resources.recording();
-            let mut recorded = self.surface.record(|recorder| {
-                self.content
-                    .build_scene(recorder, &mut resources, 64.0, 64.0);
-            });
-            let held = resources.finish();
-            let drawn = recorded
-                .snapshot()
-                .commands()
-                .iter()
-                .filter_map(|command| match command {
-                    Command::Image { image, .. } => Some(*image),
-                    _ => None,
-                })
-                .collect();
-            self.surface.update(|tx| {
-                tx[self.surface.root()].content(recorded);
-            });
-            self.installed = held;
-            self.engine.render(FrameTime::now()).expect("render");
-            drawn
-        }
-    }
-
-    /// publish → the next recording registers the new frame → a new
-    /// `ImageId`; an unchanged frame keeps naming the one registration, and
-    /// clear releases the content's handle inside `build_scene`.
-    #[cfg(all(feature = "gpu", not(target_arch = "wasm32")))]
     #[test]
-    fn published_frames_draw_through_their_own_registrations() {
-        waterui_testing::install_test_executor();
-        let (handle, view) = reactive_image();
-        let mut mount = Mount::new(Rc::clone(&view.state));
+    fn registration_follows_status() {
+        use crate::registration::RegistrationState;
 
-        // First publish before any frame: nothing registered yet — the first
-        // build_scene mints it.
-        handle.set(Image::new(vec![255, 0, 0, 255], 1, 1));
-        assert_eq!(mount.invalidations.get(), 1);
-        let drawn = mount.frame();
-        let [first] = drawn[..] else {
-            panic!("the first drawn frame must name exactly one image: {drawn:?}")
-        };
-        assert!(
-            matches!(mount.content.attempt, Some((_, Ok(_)))),
-            "the mount keeps the registration it recorded"
-        );
-
-        // Re-recording the same frame names the same id — the registration
-        // is still live, so no second upload happens.
-        let drawn = mount.frame();
-        assert_eq!(drawn, vec![first], "an unchanged frame names the same id");
-
-        // A publish stores new pixels for build_scene: the re-recorded frame
-        // names the new registration, a different id than the old pixels'.
-        handle.set(Image::new(
-            vec![
-                0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255,
-            ],
-            2,
-            2,
+        let image = Image::new(vec![0, 0, 0, 255], 1, 1);
+        assert!(matches!(
+            image.registration().snapshot(),
+            RegistrationState::Pending
         ));
-        assert_eq!(mount.invalidations.get(), 2);
-        assert_eq!(
-            mount
-                .content
-                .attempt
-                .as_ref()
-                .map(|(pixels, _)| (pixels.width, pixels.height)),
-            Some((1, 1)),
-            "publish itself registers nothing: the pixels wait for build_scene"
-        );
-        let drawn = mount.frame();
-        let [second] = drawn[..] else {
-            panic!("the published frame must name exactly one image: {drawn:?}")
-        };
-        assert_ne!(first, second, "new pixels register as a new image");
-        assert_eq!(
-            mount
-                .content
-                .attempt
-                .as_ref()
-                .map(|(pixels, _)| (pixels.width, pixels.height)),
-            Some((2, 2)),
-            "build_scene registered the published pixels"
-        );
 
-        // Clearing releases the registration inside build_scene: the new
-        // recording names nothing and the content holds no handle.
-        handle.clear();
-        let drawn = mount.frame();
-        assert_eq!(drawn, []);
-        assert!(mount.content.attempt.is_none());
-    }
-
-    /// A 4x4 frame: sixteen texels, twice what an eight-texel budget holds.
-    fn sixteen_texels() -> Image {
-        Image::new(vec![255; 4 * 4 * 4], 4, 4)
-    }
-
-    /// The refusal a full eight-texel [`Budget`] reports for a 4x4 frame.
-    fn is_the_budget_refusal(error: &RegistrationError) -> bool {
-        matches!(
-            error.resource_error(),
-            ResourceError::Image(message)
-                if message == "4x4 does not fit the remaining image budget"
-        )
-    }
-
-    /// A static image the engine refuses draws nothing, is offered to that
-    /// engine once, and reports the refusal on its registration state — from
-    /// the executor, after the recording pass. A replacement engine with
-    /// room draws it and settles the registration.
-    #[test]
-    fn a_refused_image_draws_nothing_and_reports_the_refusal() {
-        waterui_testing::install_test_executor();
-        let image = sixteen_texels();
-        let registration = image.registration();
-        let mut content = image.clone().into_scene_content(Some(image.registration));
-        let refusing = Budget::new(8);
-        let resources = SceneResources::new(Rc::clone(&refusing));
-
-        assert!(
-            matches!(registration.snapshot(), RegistrationState::Pending),
-            "an undrawn image is pending"
-        );
-        assert_eq!(frame(&mut content, &resources), []);
-        assert_eq!(frame(&mut content, &resources), []);
-        assert_eq!(
-            refusing.attempts.get(),
-            1,
-            "a refused image is not offered to the engine again on every frame"
-        );
-        assert!(
-            matches!(registration.snapshot(), RegistrationState::Pending),
-            "the refusal is delivered from the executor, not inside the recording pass"
-        );
-        assert_eq!(waterui_testing::drain_parked_local_work(), 1);
-        let RegistrationState::Refused(error) = registration.snapshot() else {
-            panic!("the refusal is reported: {:?}", registration.snapshot());
-        };
-        assert!(is_the_budget_refusal(&error), "{error}");
-
-        content.rebuild_for_engine();
-        let roomy = Budget::new(16);
-        let resources = SceneResources::new(Rc::clone(&roomy));
-        assert_eq!(frame(&mut content, &resources).len(), 1);
-        assert_eq!(waterui_testing::drain_parked_local_work(), 1);
-        assert!(
-            matches!(registration.snapshot(), RegistrationState::Registered),
-            "an engine that takes the image settles the registration"
-        );
-    }
-
-    /// A reactive frame the engine refuses draws nothing, is offered once,
-    /// and is reported on the handle until a different frame replaces it; a
-    /// refusal of a frame the handle has moved past is never reported.
-    #[test]
-    fn a_refused_frame_is_reported_on_the_handle() {
-        waterui_testing::install_test_executor();
-        let (handle, view) = reactive_image();
+        let (handle, _view) = reactive_image();
         let registration = handle.registration();
-        let mut content = ReactiveImageSceneContent {
-            state: Rc::clone(&view.state),
-            content_mode: None,
-            attempt: None,
-        };
-        let backend = Budget::new(8);
-        let resources = SceneResources::new(Rc::clone(&backend));
-        let refused = sixteen_texels();
-
-        handle.set(refused.clone());
-        assert!(
-            matches!(registration.snapshot(), RegistrationState::Pending),
-            "a published frame is pending until a recording settles it"
-        );
-        assert_eq!(frame(&mut content, &resources), []);
-        assert_eq!(waterui_testing::drain_parked_local_work(), 1);
-        assert_eq!(frame(&mut content, &resources), []);
-        assert_eq!(
-            backend.attempts.get(),
-            1,
-            "a refused frame is not offered to the engine again on every frame"
-        );
-        let RegistrationState::Refused(error) = registration.snapshot() else {
-            panic!("the refusal is reported: {:?}", registration.snapshot());
-        };
-        assert!(is_the_budget_refusal(&error), "{error}");
-
-        // Republishing the refused grid keeps its refusal.
-        handle.set(refused.clone());
         assert!(matches!(
             registration.snapshot(),
-            RegistrationState::Refused(_)
+            RegistrationState::Pending
         ));
-        assert_eq!(frame(&mut content, &resources), []);
-        assert_eq!(backend.attempts.get(), 1);
-
-        // Clearing resets to pending; publishing the refused grid again is
-        // reported again, though the content still holds its refusal.
+        handle.set(image);
+        assert!(matches!(
+            registration.snapshot(),
+            RegistrationState::Pending
+        ));
         handle.clear();
         assert!(matches!(
             registration.snapshot(),
             RegistrationState::Pending
         ));
-        handle.set(refused);
-        assert_eq!(frame(&mut content, &resources), []);
-        assert_eq!(backend.attempts.get(), 1);
-        assert_eq!(waterui_testing::drain_parked_local_work(), 1);
-        assert!(
-            matches!(&registration.snapshot(), RegistrationState::Refused(error) if is_the_budget_refusal(error))
-        );
-
-        // A frame that fits draws, and the stale refusal of the frame it
-        // replaced never lands.
-        handle.set(Image::new(vec![255; 2 * 2 * 4], 2, 2));
-        assert!(
-            matches!(registration.snapshot(), RegistrationState::Pending),
-            "a different frame resets to pending"
-        );
-        assert_eq!(frame(&mut content, &resources).len(), 1);
-        handle.set(sixteen_texels());
-        assert_eq!(frame(&mut content, &resources), []);
-        handle.set(Image::new(vec![255; 4], 1, 1));
-        // Two settlements were queued — the 2x2 frame's registration and the
-        // 4x4 frame's refusal — and both are dropped: the frames that made
-        // them have been replaced.
-        assert_eq!(waterui_testing::drain_parked_local_work(), 2);
-        assert!(
-            matches!(registration.snapshot(), RegistrationState::Pending),
-            "an outcome of a replaced frame is not reported"
-        );
-        assert_eq!(frame(&mut content, &resources).len(), 1);
-        assert_eq!(waterui_testing::drain_parked_local_work(), 1);
-        assert!(
-            matches!(registration.snapshot(), RegistrationState::Registered),
-            "the frame on display settles Registered"
-        );
     }
 
     #[test]
     fn interpolation_selects_the_sampling() {
         let image = Image::new(alloc::vec![0, 0, 0, 255], 1, 1);
-        assert_eq!(image.sampling, Sampling::Linear);
+        assert_eq!(image.frame.sampling, Sampling::Linear);
         assert_eq!(
-            image.interpolation(Interpolation::Nearest).sampling,
+            image.interpolation(Interpolation::Nearest).frame.sampling,
             Sampling::Nearest
         );
     }
