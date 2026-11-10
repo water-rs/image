@@ -6,11 +6,13 @@ extern crate alloc;
 pub mod codec;
 mod image;
 mod placement;
+mod registration;
 
 pub use codec::DecodePath;
 #[cfg(feature = "gpu")]
 pub use image::RenderOffscreenError;
 pub use image::{Image, Interpolation, ReactiveImage, ReactiveImageHandle, image, reactive_image};
+pub use registration::{RegistrationError, RegistrationState};
 /// What a render target made of an image, re-exported so callers of
 /// [`Image::status`] and [`ReactiveImageHandle::status`] need no direct
 /// dependency on the graphics crate.

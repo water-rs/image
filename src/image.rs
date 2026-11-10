@@ -29,6 +29,7 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
+use crate::registration::RegistrationState;
 use half::f16;
 use num_traits::ToPrimitive as _;
 use waterui_core::layout::Size as LayoutSize;
@@ -276,6 +277,14 @@ impl Image {
     #[must_use]
     pub fn status(&self) -> Computed<ImageStatus> {
         self.frame.status()
+    }
+
+    /// How the registration of this image's pixels with the render target
+    /// stands: [`Image::status`] in the older vocabulary, kept only while the
+    /// framework's media component moves to `status()`.
+    #[must_use]
+    pub fn registration(&self) -> Computed<RegistrationState> {
+        self.status().map(RegistrationState::from).computed()
     }
 
     /// Sets the sampling mode for this image.
@@ -593,6 +602,14 @@ impl ReactiveImageHandle {
         }))
     }
 
+    /// How the registration of the published frame stands:
+    /// [`ReactiveImageHandle::status`] in the older vocabulary, kept only
+    /// while the framework's media component moves to `status()`.
+    #[must_use]
+    pub fn registration(&self) -> Computed<RegistrationState> {
+        self.status().map(RegistrationState::from).computed()
+    }
+
     /// The displayed frame's pixel dimensions, which the view's layout reads
     /// so a size change re-lays out without a rebuild.
     fn dimensions(&self) -> Computed<Option<(u32, u32)>> {
@@ -798,6 +815,34 @@ mod tests {
         handle.clear();
         assert_eq!(dimensions.snapshot(), None);
         assert_eq!(status.snapshot(), ImageStatus::Pending);
+    }
+
+    #[test]
+    fn registration_follows_status() {
+        use crate::registration::RegistrationState;
+
+        let image = Image::new(vec![0, 0, 0, 255], 1, 1);
+        assert!(matches!(
+            image.registration().snapshot(),
+            RegistrationState::Pending
+        ));
+
+        let (handle, _view) = reactive_image();
+        let registration = handle.registration();
+        assert!(matches!(
+            registration.snapshot(),
+            RegistrationState::Pending
+        ));
+        handle.set(image);
+        assert!(matches!(
+            registration.snapshot(),
+            RegistrationState::Pending
+        ));
+        handle.clear();
+        assert!(matches!(
+            registration.snapshot(),
+            RegistrationState::Pending
+        ));
     }
 
     #[test]
