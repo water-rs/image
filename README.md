@@ -2,16 +2,15 @@
 
 High-performance image primitives and decode pipeline for WaterUI.
 
-Decoded pixels are drawn through `waterui-graphics`' render-target-neutral
-recording contract: one `Draw::image` call at the destination rectangle that
-resolves the view's content mode, recorded through `waterui_graphics::draw`.
-The same component therefore renders on the GPU compute renderer, the CPU
-sparse-strip renderer used on embedded targets, and any backend that owns its
-own scene.
+Decoded pixels are drawn on a `waterui_graphics::canvas::Canvas`: one `image`
+command whose destination rectangle follows the canvas size and resolves the
+view's content mode. Whichever renderer draws the screen around the view draws
+the image, and what it made of the pixels — ready, or refused as too large for
+the device — is the image's `status()`.
 
 Rasterizing an image into a surface of its own — `Image::render_offscreen` —
 needs a GPU device, so it sits behind the default-on `gpu` feature. A consumer
-whose backend owns the scene turns it off and links no `cherenkov-gpu`, no
+whose backend owns the rendering turns it off and links no `cherenkov-gpu`, no
 `wgpu` and no rasterizer.
 
 ## License

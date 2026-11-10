@@ -1,13 +1,13 @@
-//! Renders a real decoded image through the content contract and writes the
-//! result out to be looked at.
+//! Renders a real decoded image as a canvas drawing and writes the result out
+//! to be looked at.
 //!
-//! An image is drawn by `Draw::image` at a destination rectangle this crate
+//! An image is one `image` command at a destination rectangle this crate
 //! derives from the content mode, so the thing under test is that rectangle: a
 //! wide source in a square box lands somewhere different for each mode, and the
 //! only way to be sure it landed there is to render it and look.
 //!
-//! The PNGs go to `/tmp/waterui_scene_engines/` alongside the other components'
-//! scene exports. The colour assertions are exact rather than approximate: each
+//! The PNGs go under the test target's temporary directory. The colour
+//! assertions are exact rather than approximate: each
 //! sample sits well inside a flat region of the source image, so a transposed,
 //! mirrored, shifted or unscaled blit misses it.
 //!
@@ -17,11 +17,13 @@
 //! same thing either way up.
 #![cfg(feature = "gpu")]
 
-use std::path::Path;
+use std::path::PathBuf;
 
 use image::ImageEncoder as _;
+use waterui_core::Signal as _;
+use waterui_graphics::canvas::ImageStatus;
 use waterui_graphics::cherenkov_gpu::Gpu;
-use waterui_graphics::{OffscreenImage, OffscreenRenderer, OffscreenSize, ResourceError};
+use waterui_graphics::{OffscreenImage, OffscreenRenderer, OffscreenSize};
 use waterui_image::{ContentMode, Image, RenderOffscreenError};
 
 /// Source width. Four times the height, so no mode agrees with any other in a
@@ -96,8 +98,8 @@ fn try_render(image: Image) -> Result<OffscreenImage, RenderOffscreenError> {
 }
 
 fn save(output: &OffscreenImage, name: &str) {
-    let directory = Path::new("/tmp/waterui_scene_engines");
-    std::fs::create_dir_all(directory).expect("output directory must be creatable");
+    let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("render");
+    std::fs::create_dir_all(&directory).expect("output directory must be creatable");
     output
         .save_png(directory.join(name))
         .expect("png should be written");
@@ -167,19 +169,29 @@ fn fill_covers_the_box_and_clips_what_hangs_off_it() {
 fn an_image_the_engine_refuses_is_an_error_not_a_blank_frame() {
     const WIDTH: u32 = 1 << 17;
     let image = Image::new(vec![255; WIDTH as usize * 4], WIDTH, 1);
+    let status = image.status();
+    assert_eq!(status.snapshot(), ImageStatus::Pending);
     let error = try_render(image).expect_err("an image past the texture limit must be refused");
     let RenderOffscreenError::Rejected(error) = error else {
         panic!("expected the engine's refusal, got {error}");
     };
+    let reason = error.to_string();
     assert!(
-        matches!(
-            error.resource_error(),
-            ResourceError::TooLarge {
-                width: WIDTH,
-                height: 1,
-                ..
-            }
-        ),
-        "{error}"
+        reason.contains(&format!("image {WIDTH}x1 exceeds the image limits")),
+        "{reason}"
     );
+    // The same refusal is the image's status, which is how an app sees it.
+    assert!(
+        matches!(status.snapshot(), ImageStatus::Refused(refusal) if refusal.to_string() == reason),
+        "the image's status carries the refusal"
+    );
+}
+
+/// A drawn image reports that the renderer took it.
+#[test]
+fn a_drawn_image_is_ready() {
+    let image = decoded_source();
+    let status = image.status();
+    render(image);
+    assert_eq!(status.snapshot(), ImageStatus::Ready);
 }
