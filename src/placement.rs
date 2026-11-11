@@ -54,7 +54,7 @@ impl Frame {
         self
     }
 
-    /// How the render target's registration of the pixels stands.
+    /// What the render target made of the pixels.
     pub fn status(&self) -> Computed<ImageStatus> {
         self.source.status()
     }
