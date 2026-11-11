@@ -43,9 +43,9 @@ use waterui_core::{
 #[cfg(feature = "gpu")]
 use waterui_graphics::canvas::Drawing;
 use waterui_graphics::canvas::{Canvas, ImageStatus, Sampling};
-#[cfg(feature = "gpu")]
-use waterui_graphics::cherenkov_gpu::Gpu;
 use waterui_graphics::color::linear_to_srgb;
+#[cfg(feature = "gpu")]
+use waterui_graphics::gpu::Gpu;
 #[cfg(feature = "gpu")]
 use waterui_graphics::{OffscreenError, OffscreenImage, OffscreenRenderer, OffscreenSize};
 use waterui_layout::{
