@@ -20,6 +20,8 @@
 use std::path::PathBuf;
 
 use image::ImageEncoder as _;
+use palette::color_difference::Ciede2000 as _;
+use palette::{IntoColor as _, Lab, Srgb};
 use waterui_core::Signal as _;
 use waterui_graphics::canvas::ImageStatus;
 use waterui_graphics::gpu::Gpu;
@@ -105,23 +107,32 @@ fn save(output: &OffscreenImage, name: &str) {
         .expect("png should be written");
 }
 
-/// The largest per-channel difference, in 8-bit levels, that still reads as
-/// the expected colour. A standard-range picture is composited from an 8-bit
-/// sRGB raster, so a colour can come back a few levels off; four levels is
-/// well below what a viewer can see.
-const TOLERANCE: u8 = 4;
+/// The largest CIEDE2000 difference that still reads as the expected colour:
+/// one unit is the just-noticeable difference.
+const JUST_NOTICEABLE: f32 = 1.0;
 
-/// Asserts that the pixel at `(x, y)` of a render is `expected`, to within
-/// [`TOLERANCE`] in every channel.
+/// The colour of an 8-bit sRGB pixel in CIE L\*a\*b\*.
+fn lab([r, g, b, _]: [u8; 4]) -> Lab {
+    Srgb::new(r, g, b).into_format::<f32>().into_color()
+}
+
+/// Asserts that the pixel at `(x, y)` of a render reads as `expected`: its
+/// alpha within one 8-bit step, and, where it is visible, its colour less
+/// than a just-noticeable difference away.
 #[track_caller]
 fn assert_colour(output: &OffscreenImage, x: u32, y: u32, expected: [u8; 4]) {
     let actual = output.pixel(x, y);
     assert!(
-        actual
-            .iter()
-            .zip(expected)
-            .all(|(actual, expected)| actual.abs_diff(expected) <= TOLERANCE),
-        "pixel ({x}, {y}) is {actual:?}, expected {expected:?} within {TOLERANCE} levels"
+        actual[3].abs_diff(expected[3]) <= 1,
+        "pixel ({x}, {y}) is {actual:?}, expected the alpha of {expected:?}"
+    );
+    if expected[3] == 0 {
+        return;
+    }
+    let difference = lab(actual).difference(lab(expected));
+    assert!(
+        difference <= JUST_NOTICEABLE,
+        "pixel ({x}, {y}) is {actual:?}, {difference} CIEDE2000 from {expected:?}"
     );
 }
 
