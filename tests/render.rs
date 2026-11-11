@@ -20,9 +20,11 @@
 use std::path::PathBuf;
 
 use image::ImageEncoder as _;
+use palette::color_difference::Ciede2000 as _;
+use palette::{IntoColor as _, Lab, Srgb};
 use waterui_core::Signal as _;
 use waterui_graphics::canvas::ImageStatus;
-use waterui_graphics::cherenkov_gpu::Gpu;
+use waterui_graphics::gpu::Gpu;
 use waterui_graphics::{OffscreenImage, OffscreenRenderer, OffscreenSize};
 use waterui_image::{ContentMode, Image, RenderOffscreenError};
 
@@ -105,9 +107,33 @@ fn save(output: &OffscreenImage, name: &str) {
         .expect("png should be written");
 }
 
-/// The pixel at `(x, y)` of a render.
-fn pixel(output: &OffscreenImage, x: u32, y: u32) -> [u8; 4] {
-    output.pixel(x, y)
+/// The largest CIEDE2000 difference that still reads as the expected colour:
+/// one unit is the just-noticeable difference.
+const JUST_NOTICEABLE: f32 = 1.0;
+
+/// The colour of an 8-bit sRGB pixel in CIE L\*a\*b\*.
+fn lab([r, g, b, _]: [u8; 4]) -> Lab {
+    Srgb::new(r, g, b).into_format::<f32>().into_color()
+}
+
+/// Asserts that the pixel at `(x, y)` of a render reads as `expected`: its
+/// alpha within one 8-bit step, and, where it is visible, its colour less
+/// than a just-noticeable difference away.
+#[track_caller]
+fn assert_colour(output: &OffscreenImage, x: u32, y: u32, expected: [u8; 4]) {
+    let actual = output.pixel(x, y);
+    assert!(
+        actual[3].abs_diff(expected[3]) <= 1,
+        "pixel ({x}, {y}) is {actual:?}, expected the alpha of {expected:?}"
+    );
+    if expected[3] == 0 {
+        return;
+    }
+    let difference = lab(actual).difference(lab(expected));
+    assert!(
+        difference <= JUST_NOTICEABLE,
+        "pixel ({x}, {y}) is {actual:?}, {difference} CIEDE2000 from {expected:?}"
+    );
 }
 
 fn decoded_source() -> Image {
@@ -120,10 +146,10 @@ fn stretching_maps_the_whole_source_onto_the_whole_box() {
     save(&output, "image_stretch.png");
 
     // Each source quarter becomes a full-height stripe 64 pixels wide.
-    assert_eq!(pixel(&output, 32, 128), RED);
-    assert_eq!(pixel(&output, 96, 128), GREEN);
-    assert_eq!(pixel(&output, 160, 128), BLUE);
-    assert_eq!(pixel(&output, 224, 128), WHITE);
+    assert_colour(&output, 32, 128, RED);
+    assert_colour(&output, 96, 128, GREEN);
+    assert_colour(&output, 160, 128, BLUE);
+    assert_colour(&output, 224, 128, WHITE);
 }
 
 #[test]
@@ -132,13 +158,13 @@ fn fit_keeps_the_aspect_ratio_and_leaves_the_box_empty_around_it() {
     save(&output, "image_fit.png");
 
     // 2x scale, so a 256x64 band centred vertically between y=96 and y=160.
-    assert_eq!(pixel(&output, 32, 128), RED);
-    assert_eq!(pixel(&output, 96, 128), GREEN);
-    assert_eq!(pixel(&output, 160, 128), BLUE);
-    assert_eq!(pixel(&output, 224, 128), WHITE);
+    assert_colour(&output, 32, 128, RED);
+    assert_colour(&output, 96, 128, GREEN);
+    assert_colour(&output, 160, 128, BLUE);
+    assert_colour(&output, 224, 128, WHITE);
     // Nothing is drawn above or below the band.
-    assert_eq!(pixel(&output, 128, 32), TRANSPARENT);
-    assert_eq!(pixel(&output, 128, 224), TRANSPARENT);
+    assert_colour(&output, 128, 32, TRANSPARENT);
+    assert_colour(&output, 128, 224, TRANSPARENT);
 }
 
 #[test]
@@ -149,12 +175,12 @@ fn fill_covers_the_box_and_clips_what_hangs_off_it() {
     // 8x scale, so 1024x256 centred: the visible window is source x 48..80,
     // which is the second half of the green quarter and the first half of the
     // blue one, meeting at screen x=128.
-    assert_eq!(pixel(&output, 64, 128), GREEN);
-    assert_eq!(pixel(&output, 192, 128), BLUE);
+    assert_colour(&output, 64, 128, GREEN);
+    assert_colour(&output, 192, 128, BLUE);
     // The box is covered top to bottom, unlike `Fit`. The source's two-pixel
     // black border scales to sixteen, so these sit just inside it.
-    assert_eq!(pixel(&output, 64, 24), GREEN);
-    assert_eq!(pixel(&output, 192, 232), BLUE);
+    assert_colour(&output, 64, 24, GREEN);
+    assert_colour(&output, 192, 232, BLUE);
     // The red quarter and the corner marker are off the left edge entirely.
     assert!(
         !output.rgba8().as_chunks::<4>().0.contains(&MAGENTA),
