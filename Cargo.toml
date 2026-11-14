@@ -86,7 +86,7 @@ xcb = { git = "https://github.com/rust-x-bindings/rust-xcb", rev = "ae3b2cd080e7
 # suiteki 0.1.1 on crates.io implements nami-core 0.3's `Signal`; suiteki's
 # `dev` implements 0.5's (water-rs/suiteki#29), the source the framework's own
 # patch table names. Drop once a release carries it.
-suiteki = { git = "https://github.com/water-rs/suiteki", branch = "dev" }
+suiteki = { git = "https://github.com/water-rs/suiteki", branch = "main" }
 
 # The Cherenkov engine family lives in water-rs/waterui under `graphics/`
 # (water-rs/waterui#1449). `filtrate`/`filtrate-core`/`filtrate-derive` are
@@ -148,23 +148,23 @@ waterui-particle = { git = "https://github.com/water-rs/particle", rev = "bf663a
 # crate the codec graph shares types across rides the same source — a
 # registry `waterkit-core` beside the patched `waterkit-codec` gives two
 # decoder types.
-waterkit-build = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-codec = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-dialog = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-fs = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-audio = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-camera = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-clipboard = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-core = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-haptic = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-location = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-permission = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-screen = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-video = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-video-container = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-video-core = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-video-player = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
-waterkit-video-streaming = { git = "https://github.com/water-rs/waterkit", branch = "dev" }
+waterkit-build = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-codec = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-dialog = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-fs = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-audio = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-camera = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-clipboard = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-core = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-haptic = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-location = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-permission = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-screen = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-video = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-video-container = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-video-core = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-video-player = { git = "https://github.com/water-rs/waterkit", branch = "main" }
+waterkit-video-streaming = { git = "https://github.com/water-rs/waterkit", branch = "main" }
 
 # The mounted-test host stack rides the sources the framework's own patch
 # table names: `hydrolysis` lives in-tree at `backends/hydrolysis`
@@ -195,4 +195,4 @@ wgpu-naga-bridge = { git = "https://github.com/water-rs/wgpu", branch = "fix/met
 wgpu-types = { git = "https://github.com/water-rs/wgpu", branch = "fix/metal-shared-memory-v30" }
 # The shader runtime built against that wgpu, as the framework workspace
 # patches it.
-shaderloom = { git = "https://github.com/water-rs/shaderloom", branch = "dev" }
+shaderloom = { git = "https://github.com/water-rs/shaderloom", branch = "main" }
