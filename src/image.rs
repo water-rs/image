@@ -1,10 +1,16 @@
-//! Image views drawn through the engine-neutral scene contract.
+//! Image views drawn on a `Canvas`.
 //!
 //! This module provides [`Image`], a view that displays decoded pixels. The
-//! pixels become a [`peniko::ImageBrush`] once, at construction, and are drawn
-//! by a single `Scene2D::draw_image` call — so the same view renders on the GPU
-//! compute rasterizer, on the CPU sparse-strip rasterizer an embedded build
-//! uses, and inside a backend that owns its own scene.
+//! pixels are an `ImageSource` the render target registers on first use, and
+//! the view is a single `image` command whose destination rectangle follows
+//! the canvas size, so whichever renderer draws the screen around the view
+//! draws the image.
+//!
+//! The render target can refuse the pixels — an image beyond its image
+//! limits, or one its image budget cannot hold beside the images already
+//! registered. A refused image draws nothing and reports the refusal as its
+//! status: [`Image::status`] for a static image,
+//! [`ReactiveImageHandle::status`] for a reactive one.
 //!
 //! # Example
 //!
@@ -19,33 +25,49 @@
 //! ```
 
 use alloc::borrow::ToOwned;
-use alloc::rc::Rc;
 use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
-use core::cell::RefCell;
-use core::fmt;
 
 use half::f16;
-use peniko::color::{AlphaColor, LinearSrgb};
-use peniko::{
-    Blob, ImageAlphaType, ImageBrush, ImageData, ImageFormat, ImageQuality, ImageSampler,
+use num_traits::ToPrimitive as _;
+use waterui_core::layout::Size as LayoutSize;
+use waterui_core::layout::{
+    LayoutError, LayoutInvalidationCallback, PlacementInput, Point, ProposalSize, Rect,
+    StretchAxis, UnitPoint,
 };
-use waterui_core::layout::Size;
-use waterui_core::{Binding, Environment, SignalExt, View};
-use waterui_graphics::{Scene2D, SceneContent, SceneInvalidator, SceneView};
-use waterui_layout::{ContentMode, frame::Frame};
+use waterui_core::reactive::watcher::BoxWatcherGuard;
+use waterui_core::{
+    AnyView, Binding, Computed, Environment, Signal, SignalExt, View, flatten_signal,
+};
+#[cfg(feature = "gpu")]
+use waterui_graphics::canvas::Drawing;
+use waterui_graphics::canvas::{Canvas, ImageStatus, Sampling};
+use waterui_graphics::color::linear_to_srgb;
+#[cfg(feature = "gpu")]
+use waterui_graphics::gpu::Gpu;
+#[cfg(feature = "gpu")]
+use waterui_graphics::{OffscreenError, OffscreenImage, OffscreenRenderer, OffscreenSize};
+use waterui_layout::{
+    ContentMode, Layout, SubView, SubviewPlacement, container::FixedContainer, frame,
+};
 
 use crate::codec::{self, DecodedRgba};
-use crate::scene::{self, ImageSceneContent, pixel_size, u32_to_f32};
+#[cfg(feature = "gpu")]
+use crate::placement::u32_to_f32;
+use crate::placement::{Frame, pixel_size};
 
 pub use crate::codec::DecodePath;
 
 /// An image view.
 ///
-/// `Image` owns its decoded pixels as a shared [`ImageData`] blob and draws
-/// them as one scene image command. Placement inside the box the layout gives
-/// the view is a transform, not a pipeline: see [`Image::resizable`] and
+/// `Image` owns its decoded pixels as a shared pixel grid and draws them as one
+/// image command. Placement inside the box the layout gives the view is a
+/// destination rectangle, not a pipeline: see [`Image::resizable`] and
 /// [`Image::content_mode`].
+///
+/// The render target may refuse to register the pixels; the image then draws
+/// nothing and [`Image::status`] reports the refusal.
 ///
 /// # Example
 ///
@@ -60,13 +82,28 @@ pub use crate::codec::DecodePath;
 /// ```
 #[derive(Debug, Clone)]
 pub struct Image {
-    brush: ImageBrush,
+    /// The pixels and how they are sampled between texels.
+    frame: Frame,
     /// When `true`, the image takes the box its parent proposes instead of
-    /// locking to its native pixel size like a `SwiftUI` `Image` (the default).
+    /// keeping its natural size and only scaling down (the default).
     resizable: bool,
     /// Aspect handling inside that box. `None` stretches each axis
     /// independently, which is what `.resizable()` alone means.
     content_mode: Option<ContentMode>,
+}
+
+/// Why [`Image::render_offscreen`] produced no frame.
+#[cfg(feature = "gpu")]
+#[derive(Debug, thiserror::Error)]
+pub enum RenderOffscreenError {
+    /// The offscreen target could not be created, the frame could not
+    /// render, or the target could not be read back.
+    #[error(transparent)]
+    Offscreen(#[from] OffscreenError),
+    /// The renderer refused the image's pixels, so the frame would have held
+    /// nothing of it. The refusal is the one [`ImageStatus::Refused`] carries.
+    #[error("the renderer refused the image: {0}")]
+    Rejected(alloc::sync::Arc<dyn core::error::Error + Send + Sync>),
 }
 
 /// How the image should be filtered when its pixel grid does not align
@@ -90,14 +127,11 @@ pub enum Interpolation {
 }
 
 impl Interpolation {
-    /// The sampling quality a scene engine should give this mode.
-    ///
-    /// `Low` is nearest-neighbour and `Medium` is bilinear in every engine that
-    /// implements the contract, which is exactly the two modes offered here.
-    const fn to_quality(self) -> ImageQuality {
+    /// The engine sampling mode this interpolation selects.
+    const fn to_sampling(self) -> Sampling {
         match self {
-            Self::Linear => ImageQuality::Medium,
-            Self::Nearest => ImageQuality::Low,
+            Self::Linear => Sampling::Linear,
+            Self::Nearest => Sampling::Nearest,
         }
     }
 }
@@ -110,9 +144,9 @@ fn tone_map_reinhard(component: f32) -> f32 {
 }
 
 /// Converts linear `RGBA16F` pixels into the sRGB-encoded 8-bit pixels a scene
-/// image brush carries.
+/// image carries.
 ///
-/// The scene contract's image is 8-bit, so a float source is resolved here
+/// The content contract's image is 8-bit, so a float source is resolved here
 /// rather than by a shader at draw time: tone mapped when it holds
 /// high-dynamic-range values, then encoded with the sRGB transfer function that
 /// a renderer will decode it with.
@@ -133,22 +167,30 @@ fn rgba16f_to_srgb8(pixels: &[u8], high_dynamic_range: bool) -> Vec<u8> {
                     component
                 }
             };
-            AlphaColor::<LinearSrgb>::new([
-                map(component(0)),
-                map(component(1)),
-                map(component(2)),
-                component(3).clamp(0.0, 1.0),
-            ])
-            .to_rgba8()
-            .to_u8_array()
+            // The sRGB OETF over the clamped value, quantized to a byte —
+            // `AlphaColor::<LinearSrgb>::to_rgba8`, inlined. Alpha carries no
+            // transfer encoding.
+            let byte = |channel: f32| {
+                (channel.clamp(0.0, 1.0) * 255.0)
+                    .round()
+                    .to_u8()
+                    .expect("a clamped channel fits a u8")
+            };
+            [
+                byte(linear_to_srgb(map(component(0)))),
+                byte(linear_to_srgb(map(component(1)))),
+                byte(linear_to_srgb(map(component(2)))),
+                byte(component(3)),
+            ]
         })
         .collect()
 }
 
-/// The byte count `width` x `height` pixels of `format` occupy.
-fn size_in_bytes(format: ImageFormat, width: u32, height: u32) -> usize {
-    format
-        .size_in_bytes(width, height)
+/// The byte count a `width` x `height` grid of `bytes_per_pixel` occupies.
+fn size_in_bytes(bytes_per_pixel: usize, width: u32, height: u32) -> usize {
+    (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|pixels| pixels.checked_mul(bytes_per_pixel))
         .expect("image dimensions must not overflow a byte count")
 }
 
@@ -166,12 +208,13 @@ impl Image {
     ///
     /// # Panics
     ///
-    /// Panics if the pixel data length doesn't match `width * height * 4`.
+    /// Panics if the pixel data length doesn't match `width * height * 4`, or
+    /// if the image has no area.
     #[must_use]
     pub fn new(pixels: Vec<u8>, width: u32, height: u32) -> Self {
         assert_eq!(
             pixels.len(),
-            size_in_bytes(ImageFormat::Rgba8, width, height),
+            size_in_bytes(4, width, height),
             "Pixel data length must be width * height * 4"
         );
         Self::from_rgba8(pixels, width, height)
@@ -201,7 +244,7 @@ impl Image {
     ) -> Self {
         assert_eq!(
             pixels.len(),
-            size_in_bytes(ImageFormat::Rgba8, width, height) * 2,
+            size_in_bytes(8, width, height),
             "Pixel data length must be width * height * 8 for RGBA16F"
         );
         Self::from_rgba8(rgba16f_to_srgb8(pixels, high_dynamic_range), width, height)
@@ -209,20 +252,30 @@ impl Image {
 
     fn from_rgba8(pixels: Vec<u8>, width: u32, height: u32) -> Self {
         Self {
-            brush: ImageBrush {
-                image: ImageData {
-                    data: Blob::from(pixels),
-                    format: ImageFormat::Rgba8,
-                    alpha_type: ImageAlphaType::Alpha,
-                    width,
-                    height,
-                },
-                sampler: ImageSampler::default()
-                    .with_quality(Interpolation::default().to_quality()),
-            },
+            frame: Frame::new(
+                pixels,
+                width,
+                height,
+                Interpolation::default().to_sampling(),
+            ),
             resizable: false,
             content_mode: None,
         }
+    }
+
+    /// What the render target made of this image's pixels.
+    ///
+    /// [`ImageStatus::Pending`] until a target first draws the image, then
+    /// [`ImageStatus::Ready`] — the pixels are on screen — or
+    /// [`ImageStatus::Refused`] with the reason the target rejected them: they
+    /// exceed its image limits, or its image budget cannot hold them beside
+    /// the images already registered. A refused image draws nothing and takes
+    /// the layout space its pixel grid asks for.
+    ///
+    /// Clones of an image share the one pixel grid and so the one status.
+    #[must_use]
+    pub fn status(&self) -> Computed<ImageStatus> {
+        self.frame.status()
     }
 
     /// Sets the sampling mode for this image.
@@ -232,19 +285,19 @@ impl Image {
     /// edges across non-integer scale factors (icons, pixel art, rasterized
     /// barcodes).
     #[must_use]
-    pub const fn interpolation(mut self, mode: Interpolation) -> Self {
-        self.brush.sampler.quality = mode.to_quality();
+    pub fn interpolation(mut self, mode: Interpolation) -> Self {
+        self.frame = self.frame.sampled(mode.to_sampling());
         self
     }
 
-    /// Allows this image to stretch to its proposed bounds instead of
-    /// locking to its native pixel size.
+    /// Allows this image to fill its proposed bounds instead of only scaling down.
     ///
-    /// Mirrors `SwiftUI`'s `Image.resizable()`. The default behaviour
-    /// frames the image to its source `width × height` so a 64-pixel
-    /// asset stays 64 pixels tall regardless of the parent's proposal;
-    /// once `.resizable()` is applied the image fills whatever the
-    /// parent gives it, distorting the aspect ratio unless
+    /// By default, an unspecified proposal receives the natural pixel size.
+    /// A smaller finite proposal scales the image down, preserving its aspect
+    /// ratio; a larger proposal never scales it up. The image claims no leftover
+    /// space. Unlike a non-resizable `SwiftUI` image, it fits a smaller offer.
+    /// Once `.resizable()` is applied the image fills whatever the parent gives
+    /// it, distorting the aspect ratio unless
     /// [`Image::content_mode`] says otherwise.
     #[must_use]
     pub const fn resizable(mut self) -> Self {
@@ -261,7 +314,7 @@ impl Image {
     /// stretches each axis independently.
     ///
     /// Only meaningful together with [`Image::resizable`]: a non-resizable
-    /// image is framed to its own pixel size, where every mode agrees.
+    /// image always preserves its aspect ratio and only scales down.
     #[must_use]
     pub const fn content_mode(mut self, mode: ContentMode) -> Self {
         self.content_mode = Some(mode);
@@ -270,20 +323,20 @@ impl Image {
 
     /// Get the image dimensions (width, height).
     #[must_use]
-    pub const fn dimensions(&self) -> (u32, u32) {
+    pub fn dimensions(&self) -> (u32, u32) {
         (self.width(), self.height())
     }
 
     /// Get the image width in pixels.
     #[must_use]
-    pub const fn width(&self) -> u32 {
-        self.brush.image.width
+    pub fn width(&self) -> u32 {
+        self.frame.width()
     }
 
     /// Get the image height in pixels.
     #[must_use]
-    pub const fn height(&self) -> u32 {
-        self.brush.image.height
+    pub fn height(&self) -> u32 {
+        self.frame.height()
     }
 
     /// Decode encoded image bytes and construct an `Image`.
@@ -311,27 +364,79 @@ impl Image {
         ImageStreamDecoder::new(content_type)
     }
 
-    /// Renders this image into an offscreen RGBA8 target.
+    /// Renders this image into an offscreen target and reads the frame back.
+    ///
+    /// `renderer` owns the engine the pixels register against; `size` is the
+    /// render target in pixels and `scale` the point-to-pixel factor the
+    /// image's box derives from — `1.0` draws one point per pixel.
     ///
     /// # Errors
     ///
-    /// Returns an error when the underlying offscreen render fails.
-    #[cfg(feature = "gpu")]
-    #[expect(
+    /// [`RenderOffscreenError::Offscreen`] when the offscreen surface cannot
+    /// be created, the frame cannot render, or the target cannot be read
+    /// back; [`RenderOffscreenError::Rejected`] when the renderer's engine
+    /// refuses the image's pixels.
+    #[cfg(all(feature = "gpu", not(target_arch = "wasm32")))]
+    pub fn render_offscreen(
+        self,
+        renderer: &OffscreenRenderer<Gpu>,
+        size: OffscreenSize,
+        scale: f32,
+    ) -> Result<OffscreenImage, RenderOffscreenError> {
+        let drawing = self.drawing(size, scale);
+        let image = renderer.render_drawing(&drawing, size)?;
+        self.rendered(image)
+    }
+
+    /// Renders this image into an offscreen target and reads the frame back.
+    ///
+    /// `renderer` owns the engine the pixels register against; `size` is the
+    /// render target in pixels and `scale` the point-to-pixel factor the
+    /// image's box derives from — `1.0` draws one point per pixel.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderOffscreenError::Offscreen`] when the offscreen surface cannot
+    /// be created, the frame cannot render, or the target cannot be read
+    /// back; [`RenderOffscreenError::Rejected`] when the renderer's engine
+    /// refuses the image's pixels.
+    #[cfg(all(feature = "gpu", target_arch = "wasm32"))]
+    #[allow(
         clippy::future_not_send,
-        reason = "image rendering awaits the UI-local offscreen scene environment"
+        reason = "the engine's wasm32 API is !Send by design and every future executes on the browser's single-threaded executor"
     )]
     pub async fn render_offscreen(
         self,
-        runtime: &waterui_graphics::GpuRuntime,
-        config: waterui_graphics::OffscreenRenderConfig,
-        env: &mut Environment,
-    ) -> Result<waterui_graphics::OffscreenRenderOutput, waterui_graphics::OffscreenRenderError>
-    {
-        SceneView::new(self.into_scene_content())
-            .into_gpu_surface()
-            .render_offscreen(runtime, config, env)
-            .await
+        renderer: &OffscreenRenderer<Gpu>,
+        size: OffscreenSize,
+        scale: f32,
+    ) -> Result<OffscreenImage, RenderOffscreenError> {
+        let drawing = self.drawing(size, scale);
+        let image = renderer.render_drawing(&drawing, size).await?;
+        self.rendered(image)
+    }
+
+    /// The image placed in the box `size` pixels make at `scale` pixels per
+    /// point, as a standalone recording.
+    #[cfg(feature = "gpu")]
+    fn drawing(&self, size: OffscreenSize, scale: f32) -> Drawing {
+        let bounds = LayoutSize::new(
+            u32_to_f32(size.width()) / scale,
+            u32_to_f32(size.height()) / scale,
+        );
+        Drawing::record(bounds, |cx| {
+            self.frame.record(cx, bounds, self.content_mode);
+        })
+    }
+
+    /// `image`, unless the renderer refused the pixels it was rendered from —
+    /// the frame then holds nothing of the image.
+    #[cfg(feature = "gpu")]
+    fn rendered(&self, image: OffscreenImage) -> Result<OffscreenImage, RenderOffscreenError> {
+        match self.status().snapshot() {
+            ImageStatus::Refused(error) => Err(RenderOffscreenError::Rejected(error)),
+            _ => Ok(image),
+        }
     }
 
     fn from_decoded(decoded: DecodedRgba) -> Self {
@@ -350,62 +455,108 @@ impl Image {
             }
         }
     }
-
-    /// The scene content that draws this image, dropping the layout wrapper.
-    fn into_scene_content(self) -> ImageSceneContent {
-        ImageSceneContent::new(self.brush, self.content_mode)
-    }
 }
 
 impl View for Image {
     fn body(self, _env: &Environment) -> impl View {
-        let width = u32_to_f32(self.width());
-        let height = u32_to_f32(self.height());
+        let dimensions = Computed::constant(Some(self.dimensions()));
         let resizable = self.resizable;
-        let frame = Frame::new(SceneView::new(self.into_scene_content()));
-        if resizable {
-            frame
-        } else {
-            frame.width(width).height(height)
+        let mode = self.content_mode;
+        let natural = Computed::constant(self.frame.size());
+        let frame = self.frame;
+        let canvas = Canvas::new(move |cx| frame.draw(cx, mode)).intrinsic_size(natural);
+        sized(canvas, resizable, dimensions)
+    }
+}
+
+/// `canvas` laid out as an image: filling the box it is given when
+/// `resizable`, otherwise at its pixel size, scaled down to fit a smaller
+/// offer.
+fn sized(canvas: Canvas, resizable: bool, dimensions: Computed<Option<(u32, u32)>>) -> AnyView {
+    if resizable {
+        AnyView::new(frame::Frame::new(canvas))
+    } else {
+        AnyView::new(FixedContainer::new(ImageLayout { dimensions }, (canvas,)))
+    }
+}
+
+#[derive(Debug)]
+struct ImageLayout {
+    dimensions: Computed<Option<(u32, u32)>>,
+}
+
+impl ImageLayout {
+    fn resolve(&self, proposal: ProposalSize) -> LayoutSize {
+        let Some(natural) = self
+            .dimensions
+            .snapshot()
+            .and_then(|(width, height)| pixel_size(width, height))
+        else {
+            return LayoutSize::zero();
+        };
+        let width_scale = proposal
+            .width
+            .filter(|width| width.is_finite())
+            .map_or(1.0, |width| width / natural.width);
+        let height_scale = proposal
+            .height
+            .filter(|height| height.is_finite())
+            .map_or(1.0, |height| height / natural.height);
+        let scale = width_scale.min(height_scale).clamp(0.0, 1.0);
+        LayoutSize::new(natural.width * scale, natural.height * scale)
+    }
+}
+
+impl Layout for ImageLayout {
+    fn size_that_fits(&self, proposal: ProposalSize, _children: &[&dyn SubView]) -> LayoutSize {
+        self.resolve(proposal)
+    }
+
+    /// The image box centred in the bounds, where `place` draws it: the leaf
+    /// rule.
+    fn resolve_extent(
+        &self,
+        input: PlacementInput,
+        _children: &[&dyn SubView],
+    ) -> Result<Rect, LayoutError> {
+        Ok(input.bounds.align(input.extent()?, UnitPoint::CENTER))
+    }
+
+    fn place(
+        &self,
+        bounds: Rect,
+        _proposal: ProposalSize,
+        children: &[&dyn SubView],
+    ) -> Vec<SubviewPlacement> {
+        if children.is_empty() {
+            return vec![];
         }
-    }
-}
-
-/// The state one [`ReactiveImage`] shares with its handle.
-struct ReactiveImageState {
-    /// The frame currently on display, or `None` while there is nothing to draw.
-    brush: RefCell<Option<ImageBrush>>,
-    dimensions: Binding<Option<(u32, u32)>>,
-    invalidator: RefCell<Option<SceneInvalidator>>,
-}
-
-impl fmt::Debug for ReactiveImageState {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ReactiveImageState")
-            .field("dimensions", &self.dimensions.get())
-            .finish_non_exhaustive()
-    }
-}
-
-impl ReactiveImageState {
-    fn publish(&self, brush: Option<ImageBrush>) {
-        self.dimensions.set(
-            brush
-                .as_ref()
-                .map(|brush| (brush.image.width, brush.image.height)),
+        let size = self.resolve(ProposalSize::new(bounds.width(), bounds.height()));
+        let origin = Point::new(
+            (bounds.width() - size.width).mul_add(0.5, bounds.x()),
+            (bounds.height() - size.height).mul_add(0.5, bounds.y()),
         );
-        *self.brush.borrow_mut() = brush;
-        if let Some(invalidator) = self.invalidator.borrow().as_ref() {
-            invalidator();
-        }
+        vec![SubviewPlacement::new(
+            Rect::new(origin, size),
+            ProposalSize::new(size.width, size.height),
+        )]
+    }
+
+    fn stretch_axis(&self, _children: &[StretchAxis]) -> StretchAxis {
+        StretchAxis::None
+    }
+
+    fn watch_invalidation(&self, invalidate: LayoutInvalidationCallback) -> Vec<BoxWatcherGuard> {
+        vec![self.dimensions.watch(move |_| invalidate())]
     }
 }
 
 /// A handle that publishes decoded frames into one persistent [`ReactiveImage`].
 #[derive(Clone, Debug)]
 pub struct ReactiveImageHandle {
-    state: Rc<ReactiveImageState>,
+    /// The frame last published, or `None` while there is nothing to draw. The
+    /// view's canvas, its intrinsic size and the handle's status all follow it.
+    frame: Binding<Option<Frame>>,
 }
 
 impl ReactiveImageHandle {
@@ -414,25 +565,62 @@ impl ReactiveImageHandle {
     /// Sampling mode travels with the frame; the view's own `resizable` and
     /// content-mode settings are the ones that place it.
     pub fn set(&self, image: Image) {
-        self.state.publish(Some(image.brush));
+        self.frame.set(Some(image.frame));
     }
 
     /// Removes the displayed frame without replacing the image view.
     pub fn clear(&self) {
-        self.state.publish(None);
+        self.frame.set(None);
+    }
+
+    /// What the render target made of the published frame.
+    ///
+    /// [`ImageStatus::Pending`] while no frame is published and until a
+    /// target first draws the published frame, then [`ImageStatus::Ready`] —
+    /// the frame is on screen — or [`ImageStatus::Refused`] with the reason
+    /// the target rejected the frame's pixels: they exceed its image limits,
+    /// or its image budget cannot hold them beside the images already
+    /// registered. A refused frame draws nothing. Publishing a different
+    /// frame follows that frame's own status, and clearing returns to
+    /// `Pending`.
+    #[must_use]
+    pub fn status(&self) -> Computed<ImageStatus> {
+        flatten_signal(self.frame.clone().map(|frame| {
+            frame.map_or_else(
+                || Computed::constant(ImageStatus::Pending),
+                |frame| frame.status(),
+            )
+        }))
+    }
+
+    /// The displayed frame's pixel dimensions, which the view's layout reads
+    /// so a size change re-lays out without a rebuild.
+    fn dimensions(&self) -> Computed<Option<(u32, u32)>> {
+        self.frame
+            .clone()
+            .map(|frame| frame.map(|frame| (frame.width(), frame.height())))
+            .computed()
     }
 }
 
-/// An image view whose decoded frame can change without rebuilding its subtree.
+/// An image view whose decoded frame can change without rebuilding its
+/// subtree.
+///
+/// One [`Canvas`] mounts for the view's whole life and re-records only the
+/// image command when a frame is published, so nothing remounts and no state
+/// inside the subtree is lost.
 #[derive(Debug)]
 pub struct ReactiveImage {
-    state: Rc<ReactiveImageState>,
+    handle: ReactiveImageHandle,
     resizable: bool,
     content_mode: Option<ContentMode>,
 }
 
 impl ReactiveImage {
     /// Allows this image to stretch to its proposed bounds.
+    ///
+    /// Otherwise it keeps its natural size and only scales down, preserving its
+    /// aspect ratio and claiming no leftover space. See [`Image::resizable`].
     #[must_use]
     pub const fn resizable(mut self) -> Self {
         self.resizable = true;
@@ -451,89 +639,39 @@ impl ReactiveImage {
 
 impl View for ReactiveImage {
     fn body(self, _env: &Environment) -> impl View {
-        let width = self
-            .state
-            .dimensions
-            .map(|dimensions| dimensions.map_or(0.0, |(width, _)| u32_to_f32(width)))
-            .computed();
-        let height = self
-            .state
-            .dimensions
-            .map(|dimensions| dimensions.map_or(0.0, |(_, height)| u32_to_f32(height)))
-            .computed();
-        let frame = Frame::new(SceneView::new(ReactiveImageSceneContent {
-            state: Rc::clone(&self.state),
-            content_mode: self.content_mode,
-        }));
-        if self.resizable {
-            frame
-        } else {
-            frame.width(width).height(height)
-        }
+        let dimensions = self.handle.dimensions();
+        let natural = dimensions
+            .map(|dimensions| dimensions.and_then(|(width, height)| pixel_size(width, height)));
+        let mode = self.content_mode;
+        let frame = self.handle.frame;
+        // Publishing a frame records the canvas' one image command again, in
+        // place; nothing else re-records.
+        let canvas = Canvas::new(move |cx| {
+            cx.scope(frame, move |cx, frame: &Option<Frame>| {
+                if let Some(frame) = frame {
+                    frame.draw(cx, mode);
+                }
+            });
+        })
+        .intrinsic_size(natural);
+        sized(canvas, self.resizable, dimensions)
     }
 }
 
 /// Creates one persistent image view and its precise frame-update handle.
 #[must_use]
 pub fn reactive_image() -> (ReactiveImageHandle, ReactiveImage) {
-    let state = Rc::new(ReactiveImageState {
-        brush: RefCell::new(None),
-        dimensions: Binding::container(None),
-        invalidator: RefCell::new(None),
-    });
+    let handle = ReactiveImageHandle {
+        frame: Binding::container(None),
+    };
     (
-        ReactiveImageHandle {
-            state: Rc::clone(&state),
-        },
+        handle.clone(),
         ReactiveImage {
-            state,
+            handle,
             resizable: false,
             content_mode: None,
         },
     )
-}
-
-/// Scene content that draws whichever frame the handle last published.
-struct ReactiveImageSceneContent {
-    state: Rc<ReactiveImageState>,
-    content_mode: Option<ContentMode>,
-}
-
-impl fmt::Debug for ReactiveImageSceneContent {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ReactiveImageSceneContent")
-            .field("content_mode", &self.content_mode)
-            .finish_non_exhaustive()
-    }
-}
-
-impl SceneContent for ReactiveImageSceneContent {
-    fn build_scene(&mut self, target: &mut dyn Scene2D, width: f32, height: f32) -> bool {
-        if let Some(brush) = self.state.brush.borrow().as_ref() {
-            scene::draw(target, brush, self.content_mode, width, height);
-        }
-        false
-    }
-
-    /// The last published frame's pixel grid, and `None` before the first frame
-    /// arrives: until then the view has no picture, and so no size of its own.
-    fn intrinsic_size(&self) -> Option<Size> {
-        self.state
-            .dimensions
-            .get()
-            .and_then(|(width, height)| pixel_size(width, height))
-    }
-
-    fn set_invalidator(&mut self, invalidator: Option<SceneInvalidator>) {
-        *self.state.invalidator.borrow_mut() = invalidator;
-    }
-}
-
-impl Drop for ReactiveImageSceneContent {
-    fn drop(&mut self) {
-        self.state.invalidator.borrow_mut().take();
-    }
 }
 
 /// Convenience constructor for building an Image view inline.
@@ -632,50 +770,43 @@ fn frame_fingerprint(decoded: &DecodedRgba) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        Image, Interpolation, Rc, ReactiveImageSceneContent, SceneContent as _, Size,
-        reactive_image, rgba16f_to_srgb8,
-    };
+    use super::{Image, Interpolation, reactive_image, rgba16f_to_srgb8};
     use half::f16;
-    use peniko::ImageQuality;
+    use waterui_core::Signal;
+    use waterui_graphics::canvas::{ImageStatus, Sampling};
 
     #[test]
-    fn reactive_image_replaces_frame_without_replacing_view() {
+    fn reactive_image_publishes_the_latest_frame() {
         let (handle, _view) = reactive_image();
-        let content = ReactiveImageSceneContent {
-            state: Rc::clone(&handle.state),
-            content_mode: None,
-        };
-        assert_eq!(content.intrinsic_size(), None);
+        let dimensions = handle.dimensions();
+        let status = handle.status();
+        assert_eq!(dimensions.snapshot(), None);
+        assert_eq!(status.snapshot(), ImageStatus::Pending);
 
-        handle.set(Image::new(alloc::vec![0, 0, 0, 255], 1, 1));
+        handle.set(Image::new(vec![0, 0, 0, 255], 1, 1));
+        assert_eq!(dimensions.snapshot(), Some((1, 1)));
+        assert_eq!(status.snapshot(), ImageStatus::Pending);
 
-        assert_eq!(handle.state.dimensions.get(), Some((1, 1)));
-        assert_eq!(content.intrinsic_size(), Some(Size::new(1.0, 1.0)));
-        let displayed = {
-            let brush = handle.state.brush.borrow();
-            let brush = brush.as_ref().expect("published frame must be on display");
-            (brush.image.width, brush.image.height)
-        };
-        assert_eq!(displayed, (1, 1));
+        handle.set(Image::new(vec![0; 2 * 3 * 4], 2, 3).interpolation(Interpolation::Nearest));
+        assert_eq!(dimensions.snapshot(), Some((2, 3)));
+        let frame = handle
+            .frame
+            .snapshot()
+            .expect("the published frame is on display");
+        assert_eq!(frame.sampling, Sampling::Nearest);
 
         handle.clear();
-        assert_eq!(handle.state.dimensions.get(), None);
-        assert!(handle.state.brush.borrow().is_none());
-        assert_eq!(content.intrinsic_size(), None);
+        assert_eq!(dimensions.snapshot(), None);
+        assert_eq!(status.snapshot(), ImageStatus::Pending);
     }
 
     #[test]
-    fn interpolation_selects_the_sampling_quality() {
+    fn interpolation_selects_the_sampling() {
         let image = Image::new(alloc::vec![0, 0, 0, 255], 1, 1);
-        assert_eq!(image.brush.sampler.quality, ImageQuality::Medium);
+        assert_eq!(image.frame.sampling, Sampling::Linear);
         assert_eq!(
-            image
-                .interpolation(Interpolation::Nearest)
-                .brush
-                .sampler
-                .quality,
-            ImageQuality::Low
+            image.interpolation(Interpolation::Nearest).frame.sampling,
+            Sampling::Nearest
         );
     }
 

@@ -8,5 +8,5 @@ publish = false
 dev = ["waterui/dynamic_linking"]
 
 [dependencies]
-waterui = "0.5.0"
+waterui = { version = "0.5.0", features = ["media"] }
 waterui-image = { path = "../.." }

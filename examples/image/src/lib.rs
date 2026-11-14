@@ -8,6 +8,7 @@
 //! - Custom URL loading with TextField and Button
 
 use waterui::app::App;
+use waterui::graphics::FilterViewExt;
 use waterui::media::Photo;
 use waterui::media::photo::Event as PhotoEvent;
 use waterui::prelude::slider::slider;
@@ -63,6 +64,7 @@ fn photo_section() -> impl View {
             move |event| match event {
                 PhotoEvent::Loaded => status.set(String::from("Loaded successfully")),
                 PhotoEvent::Error(msg) => status.set(format!("Error: {msg}")),
+                other => status.set(format!("{other:?}")),
             }
         })
         .blur(blur_value.clone()); // Pass binding for reactive blur
@@ -107,7 +109,7 @@ fn custom_url_section() -> impl View {
                      State(blur): State<Binding<f64>>,
                      State(status): State<Binding<String>>,
                      State(handler): State<DynamicHandler>| {
-                        let url_str = url.get();
+                        let url_str = url.snapshot();
                         if url_str.is_empty() {
                             status.set(String::from("Please enter a URL"));
                             return;
@@ -132,6 +134,7 @@ fn custom_url_section() -> impl View {
                                         status.set(String::from("Loaded successfully"))
                                     }
                                     PhotoEvent::Error(msg) => status.set(format!("Error: {msg}")),
+                                    other => status.set(format!("{other:?}")),
                                 }
                             })
                             .blur(blur.clone());
