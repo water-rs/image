@@ -1203,9 +1203,9 @@ dependencies = [
 
 [[package]]
 name = "executor-core"
-version = "0.7.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2de25163ce4b5cac207bec1f1ebf6a1cf3033c7e02bf331e0d31cb50d239d058"
+checksum = "6e23c83035e046cd2f832c9979c4398fedf0a5d2f3b82870b119c28f24949d45"
 dependencies = [
  "async-channel",
  "async-executor",
@@ -2712,9 +2712,9 @@ dependencies = [
 
 [[package]]
 name = "moxcms"
-version = "0.9.1"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "396077b717181ce3f9a6b66739b269b82d756be5ec0f76be0bc40a7c51775830"
+checksum = "561875e11b3d8618524f974f85e4bbd05a64a112b8f7541ffcc236b5166c0564"
 dependencies = [
  "num-traits",
  "pxfm",
@@ -2749,8 +2749,8 @@ dependencies = [
 
 [[package]]
 name = "naga"
-version = "30.0.1"
-source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#9e0ab702c11f5db7b62670eaf9aeaf8a2f8ff7b5"
+version = "30.0.2"
+source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#68544c99579524dd46cc73eac03b49f8f680b768"
 dependencies = [
  "arrayvec",
  "bit-set 0.10.0",
@@ -2774,8 +2774,8 @@ dependencies = [
 
 [[package]]
 name = "naga-types"
-version = "30.0.1"
-source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#9e0ab702c11f5db7b62670eaf9aeaf8a2f8ff7b5"
+version = "30.0.2"
+source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#68544c99579524dd46cc73eac03b49f8f680b768"
 dependencies = [
  "hashbrown 0.17.1",
  "indexmap",
@@ -4957,7 +4957,8 @@ dependencies = [
 [[package]]
 name = "waterkit-build"
 version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "272f53f1d7fc711e834ad54d2b4b8e8a791ce739cfb5c508f3466dc65f7d8185"
 dependencies = [
  "futures-channel",
  "jni 0.22.4",
@@ -4967,9 +4968,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "waterkit-build"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
+dependencies = [
+ "futures-channel",
+ "jni 0.22.4",
+ "ndk-context",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "waterkit-clipboard"
 version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b83cdd522ab1e6a010a87b5679e2ea2669c4153a37e5519287231938c9a5eff"
 dependencies = [
  "async-channel",
  "block2",
@@ -4991,8 +5004,8 @@ dependencies = [
  "tracing",
  "url",
  "wasm-bindgen-futures",
- "waterkit-build",
- "waterkit-core",
+ "waterkit-build 0.2.0",
+ "waterkit-core 0.2.0",
  "web-sys",
  "wl-clipboard-rs",
  "x11rb 0.14.0",
@@ -5000,8 +5013,8 @@ dependencies = [
 
 [[package]]
 name = "waterkit-codec"
-version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
 dependencies = [
  "avif-parse",
  "cfg_aliases",
@@ -5009,7 +5022,7 @@ dependencies = [
  "image",
  "jni 0.22.4",
  "libc",
- "moxcms 0.9.1",
+ "moxcms 0.9.2",
  "ndk",
  "ndk-sys",
  "objc2",
@@ -5025,7 +5038,8 @@ dependencies = [
  "rav1d",
  "thiserror 2.0.21",
  "tracing",
- "waterkit-build",
+ "waterkit-build 0.3.0",
+ "waterkit-core 0.3.0",
  "waterkit-video-core",
  "windows 0.62.2",
  "yuv",
@@ -5034,7 +5048,24 @@ dependencies = [
 [[package]]
 name = "waterkit-core"
 version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e0407984745612136edf9a5222ff48362a78135ee6372dece317d6556433d39"
+dependencies = [
+ "dispatch2",
+ "executor-core",
+ "futures",
+ "jiff",
+ "nami",
+ "objc2",
+ "objc2-foundation",
+ "thiserror 2.0.21",
+ "uuid",
+]
+
+[[package]]
+name = "waterkit-core"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
 dependencies = [
  "dispatch2",
  "executor-core",
@@ -5066,8 +5097,8 @@ dependencies = [
  "objc2-ui-kit",
  "thiserror 2.0.21",
  "url",
- "waterkit-build",
- "waterkit-core",
+ "waterkit-build 0.2.0",
+ "waterkit-core 0.2.0",
  "windows 0.62.2",
  "zbus",
 ]
@@ -5075,7 +5106,8 @@ dependencies = [
 [[package]]
 name = "waterkit-dialog"
 version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90424affd84af71a5ca679571c39b4faf9a85f6af4a01d02f560f0475cb2e60b"
 dependencies = [
  "block2",
  "dispatch2",
@@ -5090,15 +5122,16 @@ dependencies = [
  "rfd",
  "roxmltree",
  "thiserror 2.0.21",
- "waterkit-build",
- "waterkit-core",
+ "waterkit-build 0.2.0",
+ "waterkit-core 0.2.0",
  "waterkit-fs",
 ]
 
 [[package]]
 name = "waterkit-fs"
 version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ef8747e5e82dcd174d6487023a9918065d6accb38f558d2a419bad093c9546f"
 dependencies = [
  "async-fs",
  "dirs",
@@ -5109,14 +5142,15 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tracing",
- "waterkit-build",
+ "waterkit-build 0.2.0",
  "windows 0.62.2",
 ]
 
 [[package]]
 name = "waterkit-location"
 version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80025e1d6c13497d6488a58bebbf33664f33cdd657f3b683977b1e1b2ec4d8c0"
 dependencies = [
  "async-channel",
  "dispatch2",
@@ -5130,8 +5164,8 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "wasm-bindgen",
- "waterkit-build",
- "waterkit-core",
+ "waterkit-build 0.2.0",
+ "waterkit-core 0.2.0",
  "waterkit-permission",
  "web-sys",
  "windows 0.62.2",
@@ -5141,7 +5175,8 @@ dependencies = [
 [[package]]
 name = "waterkit-permission"
 version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "433e21510a5a17ca16970c6e30ab8deebab422455f7758b6da993ecd325dd596"
 dependencies = [
  "async-channel",
  "block2",
@@ -5159,8 +5194,8 @@ dependencies = [
  "objc2-photos",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "waterkit-build",
- "waterkit-core",
+ "waterkit-build 0.2.0",
+ "waterkit-core 0.2.0",
  "web-sys",
  "windows 0.62.2",
  "zbus",
@@ -5168,8 +5203,8 @@ dependencies = [
 
 [[package]]
 name = "waterkit-video-core"
-version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
 dependencies = [
  "thiserror 2.0.21",
 ]
@@ -5798,8 +5833,8 @@ checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
 
 [[package]]
 name = "wgpu"
-version = "30.0.1"
-source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#9e0ab702c11f5db7b62670eaf9aeaf8a2f8ff7b5"
+version = "30.0.2"
+source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#68544c99579524dd46cc73eac03b49f8f680b768"
 dependencies = [
  "arrayvec",
  "bitflags 2.13.2",
@@ -5827,8 +5862,8 @@ dependencies = [
 
 [[package]]
 name = "wgpu-core"
-version = "30.0.1"
-source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#9e0ab702c11f5db7b62670eaf9aeaf8a2f8ff7b5"
+version = "30.0.2"
+source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#68544c99579524dd46cc73eac03b49f8f680b768"
 dependencies = [
  "arrayvec",
  "bit-set 0.10.0",
@@ -5860,24 +5895,24 @@ dependencies = [
 
 [[package]]
 name = "wgpu-core-deps-apple"
-version = "30.0.1"
-source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#9e0ab702c11f5db7b62670eaf9aeaf8a2f8ff7b5"
+version = "30.0.2"
+source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#68544c99579524dd46cc73eac03b49f8f680b768"
 dependencies = [
  "wgpu-hal",
 ]
 
 [[package]]
 name = "wgpu-core-deps-emscripten"
-version = "30.0.1"
-source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#9e0ab702c11f5db7b62670eaf9aeaf8a2f8ff7b5"
+version = "30.0.2"
+source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#68544c99579524dd46cc73eac03b49f8f680b768"
 dependencies = [
  "wgpu-hal",
 ]
 
 [[package]]
 name = "wgpu-core-deps-windows-linux-android"
-version = "30.0.1"
-source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#9e0ab702c11f5db7b62670eaf9aeaf8a2f8ff7b5"
+version = "30.0.2"
+source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#68544c99579524dd46cc73eac03b49f8f680b768"
 dependencies = [
  "wgpu-hal",
 ]
@@ -5905,8 +5940,8 @@ dependencies = [
 
 [[package]]
 name = "wgpu-hal"
-version = "30.0.1"
-source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#9e0ab702c11f5db7b62670eaf9aeaf8a2f8ff7b5"
+version = "30.0.2"
+source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#68544c99579524dd46cc73eac03b49f8f680b768"
 dependencies = [
  "android_system_properties",
  "arrayvec",
@@ -5960,8 +5995,8 @@ dependencies = [
 
 [[package]]
 name = "wgpu-naga-bridge"
-version = "30.0.1"
-source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#9e0ab702c11f5db7b62670eaf9aeaf8a2f8ff7b5"
+version = "30.0.2"
+source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#68544c99579524dd46cc73eac03b49f8f680b768"
 dependencies = [
  "naga",
  "wgpu-types",
@@ -5969,8 +6004,8 @@ dependencies = [
 
 [[package]]
 name = "wgpu-types"
-version = "30.0.1"
-source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#9e0ab702c11f5db7b62670eaf9aeaf8a2f8ff7b5"
+version = "30.0.2"
+source = "git+https://github.com/water-rs/wgpu?branch=fix%2Fmetal-shared-memory-v30#68544c99579524dd46cc73eac03b49f8f680b768"
 dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
@@ -6442,9 +6477,9 @@ dependencies = [
 
 [[package]]
 name = "yuv"
-version = "0.8.19"
+version = "0.8.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a295923535c00a4e72a50a0a1130097f93160b39892dd4d2d006b1e2b90d6bf9"
+checksum = "3d109d1eacc7b034329873d2d848039b365c65ab7d751b19ee84e4921c62c607"
 dependencies = [
  "num-traits",
 ]
@@ -6702,43 +6737,68 @@ source = "git+https://github.com/water-rs/waterui?branch=main#a84a5c7e11e0db9bac
 
 [[patch.unused]]
 name = "waterkit-audio"
-version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
 
 [[patch.unused]]
 name = "waterkit-camera"
-version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
+
+[[patch.unused]]
+name = "waterkit-clipboard"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
+
+[[patch.unused]]
+name = "waterkit-dialog"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
+
+[[patch.unused]]
+name = "waterkit-fs"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
 
 [[patch.unused]]
 name = "waterkit-haptic"
-version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
+
+[[patch.unused]]
+name = "waterkit-location"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
+
+[[patch.unused]]
+name = "waterkit-permission"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
 
 [[patch.unused]]
 name = "waterkit-screen"
-version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
 
 [[patch.unused]]
 name = "waterkit-video"
-version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
 
 [[patch.unused]]
 name = "waterkit-video-container"
-version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
 
 [[patch.unused]]
 name = "waterkit-video-player"
-version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
 
 [[patch.unused]]
 name = "waterkit-video-streaming"
-version = "0.2.0"
-source = "git+https://github.com/water-rs/waterkit?branch=main#e99ea9bff5d83a3549c6a127e81ad69cd38a13a4"
+version = "0.3.0"
+source = "git+https://github.com/water-rs/waterkit?branch=main#0d6c1b2a9e2bdda87939339d167a1b34efe10166"
 
 [[patch.unused]]
 name = "waterui-barcode"
