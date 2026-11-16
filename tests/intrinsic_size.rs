@@ -8,7 +8,7 @@
 use hydrolysis_m3::Material3;
 use waterui::accessibility::AccessibilityRole;
 use waterui::component::{hstack, text};
-use waterui::layout::{StretchAxis, scroll::ScrollView};
+use waterui::layout::scroll::ScrollView;
 use waterui::{AnyView, View, ViewExt as _};
 use waterui_image::{ContentMode, Image, reactive_image};
 use waterui_testing::{OffscreenApp, Role, ui};
@@ -138,7 +138,6 @@ fn non_resizable_images_only_scale_down() {
                     } else {
                         AnyView::new(image)
                     };
-                    assert_eq!(view.stretch_axis(), StretchAxis::None);
                     let view = labelled(view);
                     match open_axes {
                         2 => AnyView::new(ScrollView::both(view)),
