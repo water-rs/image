@@ -99,12 +99,21 @@ fn try_render(image: Image) -> Result<OffscreenImage, RenderOffscreenError> {
     image.render_offscreen(&renderer, size, 1.0)
 }
 
-fn save(output: &OffscreenImage, name: &str) {
+fn save(output: &OffscreenImage, case: &str, legacy_name: &str) {
     let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("render");
     std::fs::create_dir_all(&directory).expect("output directory must be creatable");
     output
-        .save_png(directory.join(name))
+        .save_png(directory.join(legacy_name))
         .expect("png should be written");
+
+    if let Some(artifacts_dir) = std::env::var_os("WATERUI_TEST_ARTIFACTS_DIR") {
+        let canonical_dir = PathBuf::from(artifacts_dir).join("image").join(case);
+        std::fs::create_dir_all(&canonical_dir)
+            .expect("visual gallery output directory must be creatable");
+        output
+            .save_png(canonical_dir.join("rendered.png"))
+            .expect("canonical visual gallery png should be written");
+    }
 }
 
 /// The largest CIEDE2000 difference that still reads as the expected colour:
@@ -143,7 +152,7 @@ fn decoded_source() -> Image {
 #[test]
 fn stretching_maps_the_whole_source_onto_the_whole_box() {
     let output = render(decoded_source());
-    save(&output, "image_stretch.png");
+    save(&output, "stretch", "image_stretch.png");
 
     // Each source quarter becomes a full-height stripe 64 pixels wide.
     assert_colour(&output, 32, 128, RED);
@@ -155,7 +164,7 @@ fn stretching_maps_the_whole_source_onto_the_whole_box() {
 #[test]
 fn fit_keeps_the_aspect_ratio_and_leaves_the_box_empty_around_it() {
     let output = render(decoded_source().content_mode(ContentMode::Fit));
-    save(&output, "image_fit.png");
+    save(&output, "fit", "image_fit.png");
 
     // 2x scale, so a 256x64 band centred vertically between y=96 and y=160.
     assert_colour(&output, 32, 128, RED);
@@ -170,7 +179,7 @@ fn fit_keeps_the_aspect_ratio_and_leaves_the_box_empty_around_it() {
 #[test]
 fn fill_covers_the_box_and_clips_what_hangs_off_it() {
     let output = render(decoded_source().content_mode(ContentMode::Fill));
-    save(&output, "image_fill.png");
+    save(&output, "fill", "image_fill.png");
 
     // 8x scale, so 1024x256 centred: the visible window is source x 48..80,
     // which is the second half of the green quarter and the first half of the
