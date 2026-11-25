@@ -92,26 +92,6 @@ pub(crate) fn is_progressive_candidate(content_type: Option<&str>, data: &[u8]) 
         || lower.contains("image/tiff")
 }
 
-/// Decode an image with the software stack, retrying HEIF inputs through an AVIF-compatible
-/// brand patch when necessary.
-///
-/// # Errors
-///
-/// Returns the original decode error when the primary decode and HEIF compatibility retry both fail.
-pub fn decode_dynamic_image_with_heif_fallback(
-    data: &[u8],
-) -> Result<image::DynamicImage, image::ImageError> {
-    match image::load_from_memory(data) {
-        Ok(image) => Ok(image),
-        Err(primary_err) => {
-            let Ok(Some(patched)) = patch_heif_brand_to_avif(data) else {
-                return Err(primary_err);
-            };
-            image::load_from_memory(&patched).map_err(|_| primary_err)
-        }
-    }
-}
-
 pub(crate) fn decode_to_rgba8(data: &[u8]) -> Result<DecodedRgba, String> {
     decode_to_rgba8_with_path(data).map(|(decoded, _)| decoded)
 }

@@ -6,7 +6,7 @@ resolver = "2"
 name = "waterui-image"
 version = "0.5.0"
 edition = "2024"
-rust-version = "1.99"
+rust-version = "1.100"
 authors = ["Lexo Liu <me@lexo.cool>"]
 license = "Apache-2.0 OR MIT"
 readme = "README.md"
@@ -62,11 +62,12 @@ waterkit-codec = { version = "0.3", default-features = false, features = ["softw
 waterkit-codec = { version = "0.3", default-features = false }
 
 [dev-dependencies]
-waterui = "0.5.0"
-waterui-testing = "0.5.0"
+waterui = "0.5.2"
+waterui-graphics = { version = "0.5.1", features = ["image-decode"] }
+waterui-testing = "0.5.1"
 # The layout tests mount a scroll view, whose scrollbars need a widget theme the
 # default test theme does not carry.
-hydrolysis-m3 = "0.3.0"
+hydrolysis-m3 = "0.3.1"
 # The render tests compare colours by CIEDE2000, the perceptual difference.
 palette = { version = "0.7.7", default-features = false, features = ["std"] }
 pollster = "1.0"
@@ -77,6 +78,9 @@ pollster = "1.0"
 # records the exact commit.
 [patch.crates-io]
 waterui-image = { path = "." }
+nami = { git = "https://github.com/water-rs/nami", branch = "main" }
+nami-core = { git = "https://github.com/water-rs/nami", branch = "main" }
+nami-derive = { git = "https://github.com/water-rs/nami", branch = "main" }
 # The renderer-agnostic fork pins the framework relies on. `block` declares
 # the Blocks ABI symbol as real storage; the `xcb` pin is the shared head the
 # framework's other crates take.
@@ -106,6 +110,9 @@ filtrate-derive = { git = "https://github.com/water-rs/waterui", branch = "main"
 waterui = { git = "https://github.com/water-rs/waterui", branch = "main" }
 waterui-assets = { git = "https://github.com/water-rs/waterui", branch = "main" }
 waterui-assets-core = { git = "https://github.com/water-rs/waterui", branch = "main" }
+waterui-assets-macros = { git = "https://github.com/water-rs/waterui", branch = "main" }
+waterui-assets-planner = { git = "https://github.com/water-rs/waterui", branch = "main" }
+waterui-capture = { git = "https://github.com/water-rs/waterui", branch = "main" }
 waterui-controls = { git = "https://github.com/water-rs/waterui", branch = "main" }
 waterui-core = { git = "https://github.com/water-rs/waterui", branch = "main" }
 waterui-dylib = { git = "https://github.com/water-rs/waterui", branch = "main" }
@@ -118,6 +125,7 @@ waterui-locale = { git = "https://github.com/water-rs/waterui", branch = "main" 
 waterui-macros = { git = "https://github.com/water-rs/waterui", branch = "main" }
 waterui-media = { git = "https://github.com/water-rs/waterui", branch = "main" }
 waterui-navigation = { git = "https://github.com/water-rs/waterui", branch = "main" }
+waterui-resources = { git = "https://github.com/water-rs/waterui", branch = "main" }
 waterui-shape = { git = "https://github.com/water-rs/waterui", branch = "main" }
 waterui-text = { git = "https://github.com/water-rs/waterui", branch = "main" }
 waterui-url = { git = "https://github.com/water-rs/waterui", branch = "main" }
@@ -174,6 +182,7 @@ waterkit-video-streaming = { git = "https://github.com/water-rs/waterkit", branc
 # which this graph does not pull, so they are not repeated here and the graph
 # carries no vello.
 hydrolysis = { git = "https://github.com/water-rs/waterui", branch = "main" }
+hydrolysis-style = { git = "https://github.com/water-rs/waterui", branch = "main" }
 hydrolysis-m3 = { git = "https://github.com/water-rs/hydrolysis-m3", branch = "main" }
 
 # Mirrored from the water-rs/waterui workspace [patch.crates-io]
@@ -196,3 +205,4 @@ wgpu-types = { git = "https://github.com/water-rs/wgpu", branch = "fix/metal-sha
 # The shader runtime built against that wgpu, as the framework workspace
 # patches it.
 shaderloom = { git = "https://github.com/water-rs/shaderloom", branch = "main" }
+wgpu-external-frame = { git = "https://github.com/water-rs/wgpu-external-frame", branch = "main" }

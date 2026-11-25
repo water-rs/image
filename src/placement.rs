@@ -73,10 +73,10 @@ impl Frame {
         let destination = size.map(move |bounds| destination(image, bounds, mode));
         if clips(mode) {
             cx.clip(size.map(Rect::from_size), |cx| {
-                cx.image(source, destination, sampling);
+                cx.image_sampled(source, destination, sampling);
             });
         } else {
-            cx.image(source, destination, sampling);
+            cx.image_sampled(source, destination, sampling);
         }
     }
 
@@ -86,10 +86,10 @@ impl Frame {
         let destination = destination(self.pixels(), bounds, mode);
         if clips(mode) {
             cx.clip(Rect::from_size(bounds), |cx| {
-                cx.image(&self.source, destination, self.sampling);
+                cx.image_sampled(&self.source, destination, self.sampling);
             });
         } else {
-            cx.image(&self.source, destination, self.sampling);
+            cx.image_sampled(&self.source, destination, self.sampling);
         }
     }
 
