@@ -38,7 +38,7 @@ use waterui_core::layout::{
 };
 use waterui_core::reactive::watcher::BoxWatcherGuard;
 use waterui_core::{
-    AnyView, Binding, Computed, Environment, Signal, SignalExt, View, flatten_signal,
+    AnyView, Binding, Computed, Environment, Signal, SignalExt, View, binding, flatten_signal,
 };
 #[cfg(feature = "gpu")]
 use waterui_graphics::canvas::Drawing;
@@ -662,7 +662,7 @@ impl View for ReactiveImage {
 #[must_use]
 pub fn reactive_image() -> (ReactiveImageHandle, ReactiveImage) {
     let handle = ReactiveImageHandle {
-        frame: Binding::container(None),
+        frame: binding(None),
     };
     (
         handle.clone(),
