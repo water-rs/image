@@ -7,6 +7,7 @@
 //! - Interactive blur control with Slider (real-time updates)
 //! - Custom URL loading with TextField and Button
 
+use waterui::Url;
 use waterui::app::App;
 use waterui::graphics::FilterViewExt;
 use waterui::media::Photo;
@@ -71,7 +72,7 @@ fn photo_section() -> impl View {
 
     vstack((
         text("Photo from URL").headline(),
-        text!("{status_message}").sub_headline(),
+        text!("{status_message}").subheadline(),
         photo,
         hstack((
             text("Blur:"),
@@ -90,10 +91,10 @@ fn custom_url_section() -> impl View {
     let blur_value = Binding::f64(0.0);
     let status_message: Binding<String> =
         Binding::container(String::from("Enter a URL and click Load"));
-    let (handler, photo_view) = Dynamic::new();
+    let (handler, photo_view) = Dynamic::<AnyView>::new();
 
     // Set initial placeholder
-    handler.set(text("No image loaded yet").foreground(Grey));
+    handler.set(AnyView::new(text("No image loaded yet").foreground(Grey)));
 
     vstack((
         text("Custom URL Loader").headline(),
@@ -108,7 +109,7 @@ fn custom_url_section() -> impl View {
                     |State(url): State<Binding<Str>>,
                      State(blur): State<Binding<f64>>,
                      State(status): State<Binding<String>>,
-                     State(handler): State<DynamicHandler>| {
+                     State(handler): State<DynamicHandler<AnyView>>| {
                         let url_str = url.snapshot();
                         if url_str.is_empty() {
                             status.set(String::from("Please enter a URL"));
@@ -138,7 +139,7 @@ fn custom_url_section() -> impl View {
                                 }
                             })
                             .blur(blur.clone());
-                        handler.set(photo);
+                        handler.set(AnyView::new(photo));
                     },
                 )
                 .state(&url_input)
@@ -146,7 +147,7 @@ fn custom_url_section() -> impl View {
                 .state(&status_message)
                 .state(&handler),
         )),
-        text!("{status_message}").sub_headline(),
+        text!("{status_message}").subheadline(),
         photo_view,
         hstack((
             text("Blur:"),
@@ -173,7 +174,7 @@ fn image_preview() -> impl View {
             Divider,
             text("Static Photo Filter Preview").headline(),
             vstack((
-                text("Generated image data; no network Photo load in preview").sub_headline(),
+                text("Generated image data; no network Photo load in preview").subheadline(),
                 Image::new(generate_test_pattern(200, 150), 200, 150),
                 hstack((
                     text("Blur:"),
@@ -212,6 +213,6 @@ pub fn demo() -> impl View {
     )
 }
 
-pub fn app(env: Environment) -> App {
-    App::new(demo, env)
+pub fn app(env: Environment) -> App<impl Windows> {
+    App::new(env).window(Window::new("", demo))
 }
